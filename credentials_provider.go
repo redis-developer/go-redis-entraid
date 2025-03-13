@@ -1,0 +1,132 @@
+package entraid
+
+import (
+	"fmt"
+
+	"github.com/redis/go-redis/v9/auth"
+)
+
+// entraidCredentialsProvider implements the auth.StreamingCredentialsProvider interface.
+var _ auth.StreamingCredentialsProvider = (*entraidCredentialsProvider)(nil)
+
+// entraidCredentialsProvider is a struct that implements the CredentialProvider interface.
+type entraidCredentialsProvider struct {
+	options CredentialsProviderOptions
+
+	tokenManager       TokenManager
+	cancelTokenManager cancelFunc
+
+	listeners []auth.CredentialsListener
+}
+
+// onTokenNext is a method that is called when the token manager receives a new token.
+func (e *entraidCredentialsProvider) onTokenNext(token *Token) {
+	// Notify all listeners with the new token.
+	for _, listener := range e.listeners {
+		listener.OnNext(&authCredentials{
+			username:       token.Username,
+			password:       token.Password,
+			rawCredentials: token.RawToken,
+		})
+	}
+}
+
+// onError is a method that is called when the token manager encounters an error.
+// It notifies all listeners with the error.
+func (e *entraidCredentialsProvider) onTokenError(err error) {
+	// Notify all listeners with the error.
+	for _, listener := range e.listeners {
+		listener.OnError(err)
+	}
+}
+
+// Subscribe subscribes to the credentials provider and returns a channel that will receive updates.
+// The first response is blocking, then data will notify the listener.
+// The listener will be notified with the credentials when they are available.
+// The listener will be notified with an error if there is an error obtaining the credentials.
+// The caller can cancel the subscription by calling the cancel function which is the second return value.
+func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener) (auth.Credentials, auth.CancelProviderFunc, error) {
+	// Check if the listener is already in the list of listeners.
+	alreadySubscribed := false
+	for _, l := range e.listeners {
+		if l == listener {
+			alreadySubscribed = true
+			break
+		}
+	}
+
+	if !alreadySubscribed {
+		// Get the token from the identity provider.
+		e.listeners = append(e.listeners, listener)
+	}
+
+	token, err := e.tokenManager.GetToken()
+	if err != nil {
+		listener.OnError(err)
+		return nil, nil, err
+	}
+
+	// Create a new credentials object.
+	credentials := &authCredentials{
+		username:       token.Username,
+		password:       token.Password,
+		rawCredentials: token.RawToken,
+	}
+
+	// Notify the listener with the credentials.
+	listener.OnNext(credentials)
+
+	cancel := func() error {
+		// Remove the listener from the list of listeners.
+		for i, l := range e.listeners {
+			if l == listener {
+				e.listeners = append(e.listeners[:i], e.listeners[i+1:]...)
+				break
+			}
+		}
+		if len(e.listeners) == 0 {
+			e.cancelTokenManager()
+		}
+		return nil
+	}
+
+	return credentials, cancel, nil
+}
+
+// newCredentialsProvider creates a new credentials provider.
+// It takes a TokenManager and CredentialProviderOptions as arguments and returns a StreamingCredentialsProvider interface.
+// The TokenManager is used to obtain the token, and the CredentialProviderOptions contains options for the credentials provider.
+// The credentials provider is responsible for managing the credentials and refreshing them when necessary.
+// It returns an error if the token manager cannot be started.
+func newCredentialsProvider(tokenManager TokenManager, options CredentialProviderOptions) (auth.StreamingCredentialsProvider, error) {
+	cp := &entraidCredentialsProvider{
+		tokenManager: tokenManager,
+		options:      options,
+	}
+	cancelTokenManager, err := cp.tokenManager.Start(tokenListenerFromCP(cp))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't start token manager: %w", err)
+	}
+	cp.cancelTokenManager = cancelTokenManager
+	return cp, nil
+}
+
+type entraidTokenListener struct {
+	onTokenNext  func(token *Token)
+	onTokenError func(err error)
+}
+
+func tokenListenerFromCP(cp *entraidCredentialsProvider) *entraidTokenListener {
+	return &entraidTokenListener{
+		onTokenNext:  cp.onTokenNext,
+		onTokenError: cp.onTokenError,
+	}
+}
+
+func (l *entraidTokenListener) OnTokenNext(token *Token) {
+	l.onTokenNext(token)
+}
+
+func (l *entraidTokenListener) OnTokenError(err error) {
+	l.onTokenError(err)
+}
