@@ -2,6 +2,7 @@ package entraid
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -82,6 +83,16 @@ type entraidTokenManager struct {
 	token *Token
 	// TokenParser is a function that parses the token.
 	TokenParser TokenParserFunc
+
+	// listener is the single listener for the token manager.
+	// It is used to receive updates from the token manager.
+	// The token manager will call the listener's OnTokenNext method with the updated token.
+	// If an error occurs, the token manager will call the listener's OnTokenError method with the error.
+	// if listener is set, Start will fail
+	listener TokenListener
+
+	// lock locks the listener to prevent concurrent access.
+	lock sync.Mutex
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
@@ -90,7 +101,7 @@ func (e *entraidTokenManager) GetToken() (*Token, error) {
 		return copyToken(e.token), nil
 	}
 
-	rawToken, err := e.idp.requestToken()
+	rawToken, err := e.idp.RequestToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to request token: %w", err)
 	}
@@ -123,14 +134,19 @@ type TokenListener interface {
 // The token manager will call the listener's OnTokenNext method with the updated token.
 // If an error occurs, the token manager will call the listener's OnError method with the error.
 func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) {
-	// Start the token manager and return a channel that will receive updates.
-	// This is a placeholder implementation.
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if e.listener != nil {
+		return nil, fmt.Errorf("token manager already started")
+	}
+	e.listener = listener
+
 	token, err := e.GetToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start token manager: %w", err)
 	}
 
-	listener.OnTokenNext(token)
+	go listener.OnTokenNext(token)
 
 	cancel := func() error {
 		// Stop the token manager.
