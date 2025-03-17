@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const MinTokenTTL = 30 * time.Minute
+
 // TokenManagerOptions is a struct that contains the options for the TokenManager.
 type TokenManagerOptions struct {
 	// ExpirationRefreshRatio is the ratio of the token expiration time to refresh the token.
@@ -15,10 +17,10 @@ type TokenManagerOptions struct {
 	// the token will be refreshed after 30 minutes.
 	ExpirationRefreshRatio float64
 
-	// ParseToken is a function that parses the raw token and returns a Token object.
+	// TokenParser is a function that parses the raw token and returns a Token object.
 	// The function takes the raw token as a string and returns a Token object and an error.
 	// If this function is not provided, the default implementation will be used.
-	ParseToken TokenParserFunc
+	TokenParser TokenParserFunc
 
 	// RetryOptions is a struct that contains the options for retrying the token request.
 	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
@@ -49,14 +51,14 @@ type TokenManager interface {
 }
 
 // defaultTokenParser is a function that parses the raw token and returns Token object.
-var defaultTokenParser = func(rawToken string) (*Token, error) {
+var defaultTokenParser = func(rawToken string, expiresOn time.Time) (*Token, error) {
 	// Parse the token and return the username and password.
 	// This is a placeholder implementation.
 	return &Token{
 		Username:  "username",
 		Password:  "password",
-		ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-		TTL:       3600,
+		ExpiresOn: expiresOn,
+		TTL:       expiresOn.Unix() - time.Now().Unix(),
 		RawToken:  rawToken,
 	}, nil
 }
@@ -66,14 +68,14 @@ var defaultTokenParser = func(rawToken string) (*Token, error) {
 // The IdentityProvider is used to obtain the token, and the TokenManagerOptions contains options for the TokenManager.
 // The TokenManager is responsible for managing the token and refreshing it when necessary.
 func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) TokenManager {
-	tokenParser := options.ParseToken
-	if tokenParser == nil {
-		tokenParser = defaultTokenParser
-	}
+	tokenParser := defaultTokenParserOr(options.TokenParser)
+	retryOptions := defaultRetryOptionsOr(options.RetryOptions)
+
 	return &entraidTokenManager{
-		idp:         idp,
-		token:       nil,
-		TokenParser: tokenParser,
+		idp:          idp,
+		token:        nil,
+		tokenParser:  tokenParser,
+		retryOptions: retryOptions,
 	}
 }
 
@@ -82,7 +84,13 @@ type entraidTokenManager struct {
 	idp   IdentityProvider
 	token *Token
 	// TokenParser is a function that parses the token.
-	TokenParser TokenParserFunc
+	tokenParser TokenParserFunc
+
+	// retryOptions is a struct that contains the options for retrying the token request.
+	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
+	// The default values are 3 attempts, 1000 ms initial delay, 10000 ms maximum delay, and 2.0 backoff multiplier.
+	// The values can be overridden by the user.
+	retryOptions RetryOptions
 
 	// listener is the single listener for the token manager.
 	// It is used to receive updates from the token manager.
@@ -96,17 +104,17 @@ type entraidTokenManager struct {
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
-	if e.token != nil && e.token.ExpiresAt <= time.Now().Unix() {
+	if e.token != nil && e.token.ExpiresOn.After(time.Now().Add(MinTokenTTL)) {
 		// copy the token so the caller can't modify it
 		return copyToken(e.token), nil
 	}
 
-	rawToken, err := e.idp.RequestToken()
+	rawToken, expiresOn, err := e.idp.RequestToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to request token: %w", err)
 	}
 
-	token, err := e.TokenParser(rawToken)
+	token, err := e.tokenParser(rawToken, expiresOn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
@@ -148,10 +156,53 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 
 	go listener.OnTokenNext(token)
 
+	go func(listener TokenListener) {
+		// Simulate token refresh
+		for {
+			time.Sleep(
+				time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond)
+			newToken, err := e.GetToken()
+			if err != nil {
+				listener.OnTokenError(err)
+				return
+			}
+			listener.OnTokenNext(newToken)
+		}
+	}(e.listener)
 	cancel := func() error {
 		// Stop the token manager.
 		return nil
 	}
 
 	return cancel, nil
+}
+
+// defaultRetryOptionsOr returns the default retry options if the provided options are not set.
+// It sets the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
+// The default values are 3 attempts, 1000 ms initial delay, 10000 ms maximum delay, and 2.0 backoff multiplier.
+// The values can be overridden by the user.
+func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
+	if retryOptions.MaxAttempts <= 0 {
+		retryOptions.MaxAttempts = 3
+	}
+	if retryOptions.InitialDelayMs == 0 {
+		retryOptions.InitialDelayMs = 1000
+	}
+	if retryOptions.BackoffMultiplier == 0 {
+		retryOptions.BackoffMultiplier = 2.0
+	}
+	if retryOptions.MaxDelayMs == 0 {
+		retryOptions.MaxDelayMs = 10000
+	}
+	return retryOptions
+}
+
+// defaultTokenParserOr returns the default token parser if the provided token parser is not set.
+// It sets the default token parser to the defaultTokenParser function.
+// The default token parser is used to parse the raw token and return a Token object.
+func defaultTokenParserOr(tokenParser TokenParserFunc) TokenParserFunc {
+	if tokenParser == nil {
+		return defaultTokenParser
+	}
+	return tokenParser
 }
