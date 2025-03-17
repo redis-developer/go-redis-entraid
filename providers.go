@@ -20,8 +20,9 @@ type CredentialsProviderOptions struct {
 	// This is used to specify the permissions that the identity has when requesting a token.
 	Scopes []string
 
+	// TokenManagerOptions is the options for the token manager.
+	// This is used to configure the token manager when requesting a token.
 	TokenManagerOptions TokenManagerOptions
-	// rewrite to go
 
 	// OnReAuthenticationError is a callback function that is called when a re-authentication error occurs.
 	OnReAuthenticationError func(error) error
@@ -40,11 +41,29 @@ const (
 	ClientSecretCredentialType = "ClientSecret"
 	// ClientCertificateCredentialType is the type of credentials that uses a client certificate to authenticate.
 	ClientCertificateCredentialType = "ClientCertificate"
+
+	// RedisScopeDefault is the default scope for Redis.
+	// This is used to specify the scope that the identity has access to when requesting a token.
+	// The scope is typically the URL of the resource that the identity has access to.
+	RedisScopeDefault = "https://redis.azure.com/.default"
+
+	// RedisResource is the default resource for Redis.
+	// This is used to specify the resource that the identity has access to when requesting a token.
+	// The resource is typically the URL of the resource that the identity has access to.
+	RedisResource = "https://redis.azure.com"
 )
 
+// Managed identity type
+
+// ManagedIdentityCredentialsProviderOptions is a struct that holds the options for the managed identity credentials provider.
 type ManagedIdentityCredentialsProviderOptions struct {
 	CredentialsProviderOptions
+	// ManagedIdentityType is the type of managed identity to use.
+	// This can be either SystemAssigned or UserAssigned.
 	ManagedIdentityType string
+
+	// UserAssignedClientID is the client ID of the user assigned identity.
+	UserAssignedClientID string
 }
 
 // NewManagedIdentityCredentialsProvider creates a new streaming credentials provider for managed identity.
@@ -52,9 +71,34 @@ type ManagedIdentityCredentialsProviderOptions struct {
 // Use this when you want either a system assigned identity or a user assigned identity.
 // The system assigned identity is automatically managed by Azure and does not require any additional configuration.
 // The user assigned identity is a separate resource that can be managed independently.
-func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsProviderOptions) (*auth.StreamingCredentialsProvider, error) {
-	return nil, ErrNotImplemented
+func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+	// Create a new identity provider using the managed identity type.
+	idp, err := NewManagedIdentityProvider(ManagedIdentityProviderOptions{
+		ManagedIdentityType:  options.ManagedIdentityType,
+		UserAssignedClientID: options.UserAssignedClientID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new token manager using the identity provider.
+	tokenManager := NewTokenManager(idp, options.TokenManagerOptions)
+	// Create a new credentials provider using the token manager.
+	credentialsProvider, err := newCredentialsProvider(tokenManager, CredentialsProviderOptions{
+		ClientID:                options.ClientID,
+		TenantID:                options.TenantID,
+		Scopes:                  options.Scopes,
+		OnReAuthenticationError: options.OnReAuthenticationError,
+		OnRetryableError:        options.OnRetryableError,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return credentialsProvider, nil
 }
+
+// Service Principal Credentials Provider below
 
 type ServicePrincipalCredentialsProviderOptions struct {
 	CredentialsProviderOptions
@@ -83,6 +127,22 @@ type ServicePrincipalCredentialsProviderOptions struct {
 // The service principal is a security identity that is used to authenticate with Azure.
 // It is typically used in scenarios where a user cannot be present to authenticate interactively.
 // The service principal is created in Azure Active Directory and is used to authenticate with Azure resources.
-func NewServicePrincipalCredentialsProvider(options ServicePrincipalCredentialsProviderOptions) (*auth.StreamingCredentialsProvider, error) {
-	return nil, ErrNotImplemented
+func NewServicePrincipalCredentialsProvider(options ServicePrincipalCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+
+	idp, err := NewMSALIdentityProvider(MSALIdentityProviderOptions{
+		ClientID:     options.ClientID,
+		ClientSecret: options.ClientSecret,
+	})
+
+	tokenManager := NewTokenManager(idp, options.TokenManagerOptions)
+
+	// Create a new credentials provider using the token manager.
+	credentialsProvider, err := newCredentialsProvider(tokenManager, CredentialsProviderOptions{
+		ClientID:                options.ClientID,
+		TenantID:                options.TenantID,
+		Scopes:                  options.Scopes,
+		OnReAuthenticationError: options.OnReAuthenticationError,
+		OnRetryableError:        options.OnRetryableError,
+	})
+	return credentialsProvider, ErrNotImplemented
 }

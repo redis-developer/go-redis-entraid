@@ -93,24 +93,6 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 	return credentials, cancel, nil
 }
 
-// newCredentialsProvider creates a new credentials provider.
-// It takes a TokenManager and CredentialProviderOptions as arguments and returns a StreamingCredentialsProvider interface.
-// The TokenManager is used to obtain the token, and the CredentialProviderOptions contains options for the credentials provider.
-// The credentials provider is responsible for managing the credentials and refreshing them when necessary.
-// It returns an error if the token manager cannot be started.
-func newCredentialsProvider(tokenManager TokenManager, options CredentialProviderOptions) (auth.StreamingCredentialsProvider, error) {
-	cp := &entraidCredentialsProvider{
-		tokenManager: tokenManager,
-		options:      options,
-	}
-	cancelTokenManager, err := cp.tokenManager.Start(tokenListenerFromCP(cp))
-	if err != nil {
-		return nil, fmt.Errorf("couldn't start token manager: %w", err)
-	}
-	cp.cancelTokenManager = cancelTokenManager
-	return cp, nil
-}
-
 type entraidTokenListener struct {
 	onTokenNext  func(token *Token)
 	onTokenError func(err error)
@@ -129,4 +111,22 @@ func (l *entraidTokenListener) OnTokenNext(token *Token) {
 
 func (l *entraidTokenListener) OnTokenError(err error) {
 	l.onTokenError(err)
+}
+
+// newCredentialsProvider creates a new credentials provider.
+// It takes a TokenManager and CredentialProviderOptions as arguments and returns a StreamingCredentialsProvider interface.
+// The TokenManager is used to obtain the token, and the CredentialProviderOptions contains options for the credentials provider.
+// The credentials provider is responsible for managing the credentials and refreshing them when necessary.
+// It returns an error if the token manager cannot be started.
+func newCredentialsProvider(tokenManager TokenManager, options CredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+	cp := &entraidCredentialsProvider{
+		tokenManager: tokenManager,
+		options:      options,
+	}
+	cancelTokenManager, err := cp.tokenManager.Start(tokenListenerFromCP(cp))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't start token manager: %w", err)
+	}
+	cp.cancelTokenManager = cancelTokenManager
+	return cp, nil
 }

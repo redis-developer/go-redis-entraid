@@ -7,7 +7,33 @@ import (
 
 // TokenManagerOptions is a struct that contains the options for the TokenManager.
 type TokenManagerOptions struct {
+	// ExpirationRefreshRatio is the ratio of the token expiration time to refresh the token.
+	// It is used to determine when to refresh the token.
+	// The value should be between 0 and 1.
+	// For example, if the expiration time is 1 hour and the ratio is 0.5,
+	// the token will be refreshed after 30 minutes.
+	ExpirationRefreshRatio float64
+
+	// ParseToken is a function that parses the raw token and returns a Token object.
+	// The function takes the raw token as a string and returns a Token object and an error.
+	// If this function is not provided, the default implementation will be used.
 	ParseToken TokenParserFunc
+
+	// RetryOptions is a struct that contains the options for retrying the token request.
+	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
+	RetryOptions RetryOptions
+}
+
+// RetryOptions is a struct that contains the options for retrying the token request.
+type RetryOptions struct {
+	// MaxAttempts is the maximum number of attempts to retry the token request.
+	MaxAttempts int
+	// InitialDelayMs is the initial delay in milliseconds before retrying the token request.
+	InitialDelayMs int
+	// MaxDelayMs is the maximum delay in milliseconds between retry attempts.
+	MaxDelayMs int
+	// BackoffMultiplier is the multiplier for the backoff delay.
+	BackoffMultiplier float64
 }
 
 // TokenManager is an interface that defines the methods for managing tokens.
@@ -64,7 +90,11 @@ func (e *entraidTokenManager) GetToken() (*Token, error) {
 		return copyToken(e.token), nil
 	}
 
-	rawToken := e.idp.requestToken()
+	rawToken, err := e.idp.requestToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to request token: %w", err)
+	}
+
 	token, err := e.TokenParser(rawToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
