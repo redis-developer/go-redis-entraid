@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/redis/go-redis/v9/auth"
+	auth "github.com/redis/go-redis/v9/auth"
 )
 
 // entraidCredentialsProvider implements the auth.StreamingCredentialsProvider interface.

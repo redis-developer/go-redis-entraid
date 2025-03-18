@@ -69,9 +69,12 @@ var defaultTokenParser = func(rawToken string, expiresOn time.Time) (*Token, err
 // It takes an IdentityProvider and TokenManagerOptions as arguments and returns a TokenManager interface.
 // The IdentityProvider is used to obtain the token, and the TokenManagerOptions contains options for the TokenManager.
 // The TokenManager is responsible for managing the token and refreshing it when necessary.
-func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) TokenManager {
+func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) (TokenManager, error) {
 	tokenParser := defaultTokenParserOr(options.TokenParser)
 	retryOptions := defaultRetryOptionsOr(options.RetryOptions)
+	if idp == nil {
+		return nil, fmt.Errorf("identity provider is required")
+	}
 
 	return &entraidTokenManager{
 		idp:          idp,
@@ -79,7 +82,7 @@ func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) TokenMan
 		closed:       make(chan struct{}),
 		tokenParser:  tokenParser,
 		retryOptions: retryOptions,
-	}
+	}, nil
 }
 
 // entraidTokenManager is a struct that implements the TokenManager interface.

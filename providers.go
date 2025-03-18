@@ -1,24 +1,15 @@
 package entraid
 
 import (
-	"crypto"
-	"crypto/x509"
+	"fmt"
 
 	"github.com/redis/go-redis/v9/auth"
 )
 
 type CredentialsProviderOptions struct {
-	// ClientID is the client ID of the system assigned identity.
+	// ClientID is the client ID of the identity.
 	// This is used to identify the identity when requesting a token.
 	ClientID string
-
-	// TenantID is the tenant ID of the service principal.
-	// This is used to identify the tenant when requesting a token.
-	TenantID string
-
-	// Scopes is a list of scopes that the identity has access to.
-	// This is used to specify the permissions that the identity has when requesting a token.
-	Scopes []string
 
 	// TokenManagerOptions is the options for the token manager.
 	// This is used to configure the token manager when requesting a token.
@@ -57,13 +48,14 @@ const (
 
 // ManagedIdentityCredentialsProviderOptions is a struct that holds the options for the managed identity credentials provider.
 type ManagedIdentityCredentialsProviderOptions struct {
+	// CredentialsProviderOptions is the options for the credentials provider.
+	// This is used to configure the credentials provider when requesting a token.
+	// It is used to specify the client ID, tenant ID, and scopes for the identity.
 	CredentialsProviderOptions
-	// ManagedIdentityType is the type of managed identity to use.
-	// This can be either SystemAssigned or UserAssigned.
-	ManagedIdentityType string
 
-	// UserAssignedClientID is the client ID of the user assigned identity.
-	UserAssignedClientID string
+	// ManagedIdentityProviderOptions is the options for the managed identity provider.
+	// This is used to configure the managed identity provider when requesting a token.
+	ManagedIdentityProviderOptions
 }
 
 // NewManagedIdentityCredentialsProvider creates a new streaming credentials provider for managed identity.
@@ -73,76 +65,90 @@ type ManagedIdentityCredentialsProviderOptions struct {
 // The user assigned identity is a separate resource that can be managed independently.
 func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
 	// Create a new identity provider using the managed identity type.
-	idp, err := NewManagedIdentityProvider(ManagedIdentityProviderOptions{
-		ManagedIdentityType:  options.ManagedIdentityType,
-		UserAssignedClientID: options.UserAssignedClientID,
-	})
+	idp, err := NewManagedIdentityProvider(options.ManagedIdentityProviderOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot create managed identity provider: %w", err)
 	}
 
 	// Create a new token manager using the identity provider.
-	tokenManager := NewTokenManager(idp, options.TokenManagerOptions)
-	// Create a new credentials provider using the token manager.
-	credentialsProvider, err := newCredentialsProvider(tokenManager, CredentialsProviderOptions{
-		ClientID:                options.ClientID,
-		TenantID:                options.TenantID,
-		Scopes:                  options.Scopes,
-		OnReAuthenticationError: options.OnReAuthenticationError,
-		OnRetryableError:        options.OnRetryableError,
-	})
+	tokenManager, err := NewTokenManager(idp, options.TokenManagerOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot create token manager: %w", err)
+	}
+	// Create a new credentials provider using the token manager.
+	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
 	}
 
 	return credentialsProvider, nil
 }
 
-// Service Principal Credentials Provider below
-
-type ServicePrincipalCredentialsProviderOptions struct {
+// ConfidentialCredentialsProviderOptions is a struct that holds the options for the confidential credentials provider.
+// It is used to configure the credentials provider when requesting a token.
+type ConfidentialCredentialsProviderOptions struct {
+	// CredentialsProviderOptions is the options for the credentials provider.
+	// This is used to configure the credentials provider when requesting a token.
 	CredentialsProviderOptions
 
-	// ClientCredentialType is the type of credentials that are used to authenticate the service principal.
-	// This can be either ClientSecret or ClientCertificate.
-	// ClientSecret is used to authenticate the service principal when requesting a token.
-	// ClientCertificate is used to authenticate the service principal using a certificate.
-	ClientCredentialType string
-
-	// ClientSecret is the client secret of the service principal.
-	// This is used to authenticate the service principal when requesting a token.
-	ClientSecret string
-
-	// ClientCertificate is the client certificate of the service principal.
-	// This is used to authenticate the service principal when requesting a token.
-	ClientCertificate x509.Certificate
-	// ClientCertificatePrivateKey is the private key of the client certificate.
-	// This is used to authenticate the service principal when requesting a token.
-	ClientCertificatePrivateKey crypto.PrivateKey
+	// ConfidentialIdentityProviderOptions is the options for the confidential identity provider.
+	// This is used to configure the identity provider when requesting a token.
+	ConfidentialIdentityProviderOptions
 }
 
-// NewServicePrincipalCredentialsProvider creates a new streaming credentials provider for service principal.
-// It uses the provided options to configure the provider.
-// Use this when you want to use a service principal to authenticate with Azure.
-// The service principal is a security identity that is used to authenticate with Azure.
-// It is typically used in scenarios where a user cannot be present to authenticate interactively.
-// The service principal is created in Azure Active Directory and is used to authenticate with Azure resources.
-func NewServicePrincipalCredentialsProvider(options ServicePrincipalCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+// NewConfidentialCredentialsProvider creates a new confidential credentials provider.
+// It uses client id and client credentials to authenticate with the identity provider.
+// The client credentials can be either a client secret or a client certificate.
+func NewConfidentialCredentialsProvider(options ConfidentialCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+	// Create a new identity provider using the client ID and client credentials.
+	idp, err := NewConfidentialIdentityProvider(options.ConfidentialIdentityProviderOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create confidential identity provider: %w", err)
+	}
 
-	idp, err := NewMSALIdentityProvider(MSALIdentityProviderOptions{
-		ClientID:     options.ClientID,
-		ClientSecret: options.ClientSecret,
-	})
-
-	tokenManager := NewTokenManager(idp, options.TokenManagerOptions)
+	// Create a new token manager using the identity provider.
+	tokenManager, err := NewTokenManager(idp, options.TokenManagerOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create token manager: %w", err)
+	}
 
 	// Create a new credentials provider using the token manager.
-	credentialsProvider, err := newCredentialsProvider(tokenManager, CredentialsProviderOptions{
-		ClientID:                options.ClientID,
-		TenantID:                options.TenantID,
-		Scopes:                  options.Scopes,
-		OnReAuthenticationError: options.OnReAuthenticationError,
-		OnRetryableError:        options.OnRetryableError,
-	})
-	return credentialsProvider, ErrNotImplemented
+	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
+	}
+	return credentialsProvider, nil
+}
+
+// DefaultAzureCredentialsProviderOptions is a struct that holds the options for the default azure credentials provider.
+// It is used to configure the credentials provider when requesting a token.
+type DefaultAzureCredentialsProviderOptions struct {
+	CredentialsProviderOptions
+	DefaultAzureIdentityProviderOptions
+}
+
+// NewDefaultAzureCredentialsProvider creates a new default azure credentials provider.
+// It uses the default azure identity provider to authenticate with the identity provider.
+// The default azure identity provider is a special type of identity provider that uses the default azure identity to authenticate.
+// It is used to authenticate with the identity provider when requesting a token.
+func NewDefaultAzureCredentialsProvider(options DefaultAzureCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+	// Create a new identity provider using the default azure identity type.
+	idp, err := NewDefaultAzureIdentityProvider(options.DefaultAzureIdentityProviderOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create default azure identity provider: %w", err)
+	}
+
+	// Create a new token manager using the identity provider.
+	tokenManager, err := NewTokenManager(idp, options.TokenManagerOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create token manager: %w", err)
+	}
+
+	// Create a new credentials provider using the token manager.
+	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
+	}
+	return credentialsProvider, nil
+
 }

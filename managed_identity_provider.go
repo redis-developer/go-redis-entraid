@@ -4,26 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	mi "github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity"
 )
-
-type ManagedIdentityProvider struct {
-	// UserAssignedClientID is the client ID of the user assigned identity.
-	// This is used to identify the identity when requesting a token.
-	UserAssignedClientID string
-
-	// ManagedIdentityType is the type of managed identity.
-	// This can be either SystemAssigned or UserAssigned.
-	ManagedIdentityType string
-
-	// Scopes is a list of scopes that the identity has access to.
-	// This is used to specify the permissions that the identity has when requesting a token.
-	Scopes []string
-
-	// Client is the managed identity client used to request a token.
-	Client *mi.Client
-}
 
 type ManagedIdentityProviderOptions struct {
 	// UserAssignedClientID is the client ID of the user assigned identity.
@@ -35,6 +19,23 @@ type ManagedIdentityProviderOptions struct {
 	// Scopes is a list of scopes that the identity has access to.
 	// This is used to specify the permissions that the identity has when requesting a token.
 	Scopes []string
+}
+
+type ManagedIdentityProvider struct {
+	// userAssignedClientID is the client ID of the user assigned identity.
+	// This is used to identify the identity when requesting a token.
+	userAssignedClientID string
+
+	// managedIdentityType is the type of managed identity.
+	// This can be either SystemAssigned or UserAssigned.
+	managedIdentityType string
+
+	// scopes is a list of scopes that the identity has access to.
+	// This is used to specify the permissions that the identity has when requesting a token.
+	scopes []string
+
+	// client is the managed identity client used to request a token.
+	client *mi.Client
 }
 
 func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedIdentityProvider, error) {
@@ -65,32 +66,32 @@ func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedId
 	}
 
 	return &ManagedIdentityProvider{
-		UserAssignedClientID: opts.UserAssignedClientID,
-		ManagedIdentityType:  opts.ManagedIdentityType,
-		Scopes:               opts.Scopes,
-		Client:               &client,
+		userAssignedClientID: opts.UserAssignedClientID,
+		managedIdentityType:  opts.ManagedIdentityType,
+		scopes:               opts.Scopes,
+		client:               &client,
 	}, nil
 }
 
-func (m *ManagedIdentityProvider) requestToken() (string, error) {
-	if m.Client == nil {
-		return "", errors.New("managed identity client is not initialized")
+func (m *ManagedIdentityProvider) RequestToken() (string, time.Time, error) {
+	if m.client == nil {
+		return "", time.Time{}, errors.New("managed identity client is not initialized")
 	}
 
 	// default resource is RedisResource == "https://redis.azure.com"
 	// if no scopes are provided, use the default resource
 	// if scopes are provided, use the first scope as the resource
 	resource := RedisResource
-	if len(m.Scopes) > 0 {
-		resource = m.Scopes[0]
+	if len(m.scopes) > 0 {
+		resource = m.scopes[0]
 	}
 	// acquire token using the managed identity client
 	// the resource is the URL of the resource that the identity has access to
-	token, err := m.Client.AcquireToken(context.TODO(), resource)
+	token, err := m.client.AcquireToken(context.TODO(), resource)
 	if err != nil {
-		return "", fmt.Errorf("coudn't acquire token: %w", err)
+		return "", time.Time{}, fmt.Errorf("coudn't acquire token: %w", err)
 	}
 
 	// return the access token
-	return token.AccessToken, nil
+	return token.AccessToken, token.ExpiresOn.UTC(), nil
 }
