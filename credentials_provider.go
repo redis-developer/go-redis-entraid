@@ -99,21 +99,16 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 			}
 		}
 		if len(e.listeners) == 0 {
-			e.close()
+			if e.cancelTokenManager != nil {
+				e.cancelTokenManager()
+			}
+			e.cancelTokenManager = nil
+			e.listeners = nil
 		}
 		return nil
 	}
 
 	return credentials, cancel, nil
-}
-
-func (e *entraidCredentialsProvider) close() {
-	if e.cancelTokenManager != nil {
-		e.cancelTokenManager()
-	}
-	e.cancelTokenManager = nil
-	e.listeners = nil
-	e.rwLock = sync.RWMutex{}
 }
 
 type entraidTokenListener struct {

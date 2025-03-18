@@ -10,9 +10,10 @@ import (
 
 // DefaultAzureIdentityProviderOptions represents the options for the DefaultAzureIdentityProvider.
 type DefaultAzureIdentityProviderOptions struct {
-	// Scopes is the list of scopes used to request a token from the identity provider.
+	// AzureOptions is the options used to configure the Azure identity provider.
 	AzureOptions *azidentity.DefaultAzureCredentialOptions
-	Scopes       []string
+	// Scopes is the list of scopes used to request a token from the identity provider.
+	Scopes []string
 }
 
 type DefaultAzureIdentityProvider struct {
