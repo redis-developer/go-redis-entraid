@@ -2,6 +2,7 @@ package entraid
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/redis/go-redis/v9/auth"
 )
@@ -16,11 +17,18 @@ type entraidCredentialsProvider struct {
 	tokenManager       TokenManager
 	cancelTokenManager cancelFunc
 
+	// listeners is a slice of listeners that are notified when the token manager receives a new token.
 	listeners []auth.CredentialsListener
+
+	// rwLock is a mutex that is used to synchronize access to the listeners slice.
+	// It is used to ensure that only one goroutine can access the listeners slice at a time.
+	rwLock sync.RWMutex
 }
 
 // onTokenNext is a method that is called when the token manager receives a new token.
 func (e *entraidCredentialsProvider) onTokenNext(token *Token) {
+	e.rwLock.RLock()
+	defer e.rwLock.RUnlock()
 	// Notify all listeners with the new token.
 	for _, listener := range e.listeners {
 		listener.OnNext(&authCredentials{
@@ -34,6 +42,8 @@ func (e *entraidCredentialsProvider) onTokenNext(token *Token) {
 // onError is a method that is called when the token manager encounters an error.
 // It notifies all listeners with the error.
 func (e *entraidCredentialsProvider) onTokenError(err error) {
+	e.rwLock.RLock()
+	defer e.rwLock.RUnlock()
 	// Notify all listeners with the error.
 	for _, listener := range e.listeners {
 		listener.OnError(err)
@@ -46,6 +56,7 @@ func (e *entraidCredentialsProvider) onTokenError(err error) {
 // The listener will be notified with an error if there is an error obtaining the credentials.
 // The caller can cancel the subscription by calling the cancel function which is the second return value.
 func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener) (auth.Credentials, auth.CancelProviderFunc, error) {
+	e.rwLock.Lock()
 	// Check if the listener is already in the list of listeners.
 	alreadySubscribed := false
 	for _, l := range e.listeners {
@@ -59,6 +70,7 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 		// Get the token from the identity provider.
 		e.listeners = append(e.listeners, listener)
 	}
+	e.rwLock.Unlock()
 
 	token, err := e.tokenManager.GetToken()
 	if err != nil {
@@ -78,6 +90,8 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 
 	cancel := func() error {
 		// Remove the listener from the list of listeners.
+		e.rwLock.Lock()
+		defer e.rwLock.Unlock()
 		for i, l := range e.listeners {
 			if l == listener {
 				e.listeners = append(e.listeners[:i], e.listeners[i+1:]...)
@@ -85,12 +99,21 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 			}
 		}
 		if len(e.listeners) == 0 {
-			e.cancelTokenManager()
+			e.close()
 		}
 		return nil
 	}
 
 	return credentials, cancel, nil
+}
+
+func (e *entraidCredentialsProvider) close() {
+	if e.cancelTokenManager != nil {
+		e.cancelTokenManager()
+	}
+	e.cancelTokenManager = nil
+	e.listeners = nil
+	e.rwLock = sync.RWMutex{}
 }
 
 type entraidTokenListener struct {

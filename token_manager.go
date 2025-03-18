@@ -48,6 +48,8 @@ type TokenManager interface {
 	GetToken() (*Token, error)
 	// Start starts the token manager and returns a channel that will receive updates.
 	Start(listener TokenListener) (cancelFunc, error)
+	// Close closes the token manager and releases any resources.
+	Close() error
 }
 
 // defaultTokenParser is a function that parses the raw token and returns Token object.
@@ -74,6 +76,7 @@ func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) TokenMan
 	return &entraidTokenManager{
 		idp:          idp,
 		token:        nil,
+		closed:       make(chan struct{}),
 		tokenParser:  tokenParser,
 		retryOptions: retryOptions,
 	}
@@ -101,6 +104,8 @@ type entraidTokenManager struct {
 
 	// lock locks the listener to prevent concurrent access.
 	lock sync.Mutex
+
+	closed chan struct{}
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
@@ -148,6 +153,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 		return nil, fmt.Errorf("token manager already started")
 	}
 	e.listener = listener
+	e.closed = make(chan struct{})
 
 	token, err := e.GetToken()
 	if err != nil {
@@ -159,22 +165,61 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	go func(listener TokenListener) {
 		// Simulate token refresh
 		for {
-			time.Sleep(
-				time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond)
-			newToken, err := e.GetToken()
-			if err != nil {
-				listener.OnTokenError(err)
+			select {
+			case <-time.After(time.Duration(e.token.TTL) * time.Second):
+				// Token is about to expire, refresh it
+				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
+					token, err := e.GetToken()
+					if err == nil {
+						listener.OnTokenNext(token)
+						break
+					}
+					// check if err is retryable
+					if err.Error() == "retryable error" {
+						// retry
+						continue
+					} else {
+						// not retryable
+						listener.OnTokenError(err)
+						return
+					}
+
+					// check if max attempts reached
+					if i == e.retryOptions.MaxAttempts-1 {
+						listener.OnTokenError(err)
+						return
+					}
+
+					// Exponential backoff
+					delay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
+					if delay < time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
+						delay = time.Duration(float64(delay) * e.retryOptions.BackoffMultiplier)
+					}
+
+					time.Sleep(delay)
+
+					if delay > time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
+						delay = time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
+					}
+				}
+			case <-e.closed:
+				// Token manager is closed, stop the loop
 				return
 			}
-			listener.OnTokenNext(newToken)
 		}
 	}(e.listener)
-	cancel := func() error {
-		// Stop the token manager.
-		return nil
-	}
 
-	return cancel, nil
+	return e.Close, nil
+}
+
+func (e *entraidTokenManager) Close() error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if e.listener != nil {
+		e.listener = nil
+	}
+	close(e.closed)
+	return nil
 }
 
 // defaultRetryOptionsOr returns the default retry options if the provided options are not set.
