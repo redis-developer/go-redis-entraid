@@ -94,7 +94,7 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 		return nil, fmt.Errorf("response is nil")
 	}
 	switch response.Type() {
-	case typeAuthResult:
+	case ResponseTypeAuthResult:
 		authResult := response.AuthResult()
 		if authResult == nil {
 			return nil, fmt.Errorf("auth result is nil")
@@ -104,10 +104,15 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 		username = authResult.IDToken.Oid
 		password = rawToken
 		expiresOn = authResult.ExpiresOn.UTC()
-	case typeAccessToken:
-		accessToken := response.AccessToken()
-		if accessToken == nil {
-			return nil, fmt.Errorf("access token is nil")
+	case ResponseTypeRawToken, ResponseTypeAccessToken:
+		token := response.RawToken()
+		if response.Type() == ResponseTypeAccessToken {
+			accessToken := response.AccessToken()
+			if accessToken == nil {
+				return nil, fmt.Errorf("access token is nil")
+			}
+			token = accessToken.Token
+			expiresOn = accessToken.ExpiresOn.UTC()
 		}
 
 		claims := struct {
@@ -115,14 +120,18 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 			Oid string `json:"oid"`
 		}{}
 
-		_, err := jwt.ParseWithClaims(accessToken.Token, claims, nil)
+		_, err := jwt.ParseWithClaims(token, claims, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse jwt token: %w", err)
 		}
-		rawToken = accessToken.Token
+		rawToken = token
 		username = claims.Oid
 		password = rawToken
-		expiresOn = accessToken.ExpiresOn.UTC()
+
+		if expiresOn.IsZero() {
+			expiresOn = claims.ExpiresAt.Time
+		}
+
 	default:
 		return nil, fmt.Errorf("unknown response type: %s", response.Type())
 	}
