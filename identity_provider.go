@@ -8,10 +8,12 @@ import (
 )
 
 const (
-	// typeAuthResult is the type of the auth result.
-	typeAuthResult = "AuthResult"
-	// typeAccessToken is the type of the access token.
-	typeAccessToken = "AccessToken"
+	// ResponseTypeAuthResult is the type of the auth result.
+	ResponseTypeAuthResult = "AuthResult"
+	// ResponseTypeAccessToken is the type of the access token.
+	ResponseTypeAccessToken = "AccessToken"
+	// ResponseTypeRawToken is the type of the response when you have a raw string.
+	ResponseTypeRawToken = "RawToken"
 )
 
 // IdentityProviderResponse is an interface that defines the methods for an identity provider authentication result.
@@ -21,6 +23,7 @@ type IdentityProviderResponse interface {
 	Type() string
 	AuthResult() *public.AuthResult
 	AccessToken() *azcore.AccessToken
+	RawToken() string
 }
 
 // IdentityProviderResponseParserFunc is a function that parses the token and returns the username and password.
@@ -39,6 +42,7 @@ type authResult struct {
 	resultType  string
 	authResult  *public.AuthResult
 	accessToken *azcore.AccessToken
+	rawToken    string
 }
 
 func (a *authResult) Type() string {
@@ -53,26 +57,36 @@ func (a *authResult) AccessToken() *azcore.AccessToken {
 	return a.accessToken
 }
 
-// newAuthResult creates a new auth result based on the type provided.
+func (a *authResult) RawToken() string {
+	return a.rawToken
+}
+
+// NewIDPResponse creates a new auth result based on the type provided.
 // It returns an IdentityProviderResponse interface.
-func newIDPResponse(t string, result interface{}) (IdentityProviderResponse, error) {
+func NewIDPResponse(t string, result interface{}) (IdentityProviderResponse, error) {
 	r := &authResult{resultType: t}
 
 	switch t {
-	case typeAuthResult:
+	case ResponseTypeAuthResult:
 		if typed, ok := result.(*public.AuthResult); !ok {
 			return nil, fmt.Errorf("expected AuthResult, got %T", result)
 		} else {
 			r.authResult = typed
 		}
-	case typeAccessToken:
+	case ResponseTypeAccessToken:
 		if typed, ok := result.(*azcore.AccessToken); !ok {
 			return nil, fmt.Errorf("expected AccessToken, got %T", result)
 		} else {
 			r.accessToken = typed
 		}
+	case ResponseTypeRawToken:
+		if typed, ok := result.(string); !ok {
+			return nil, fmt.Errorf("expected string, got %T", result)
+		} else {
+			r.rawToken = typed
+		}
 	default:
-		return nil, fmt.Errorf("unknown type: %s", t)
+		return nil, fmt.Errorf("unknown idp response type: %s", t)
 	}
 
 	return r, nil

@@ -225,7 +225,7 @@ type entraidTokenManager struct {
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
-	if e.token != nil && e.token.expiresOn.After(time.Now().Add(MinTokenTTL)) {
+	if e.token != nil && e.token.expiresOn.Before(time.Now().Add(e.lowerBoundDuration)) {
 		// copy the token so the caller can't modify it
 		return copyToken(e.token), nil
 	}

@@ -98,5 +98,5 @@ func (m *ManagedIdentityProvider) RequestToken() (IdentityProviderResponse, erro
 		return nil, fmt.Errorf("coudn't acquire token: %w", err)
 	}
 
-	return newIDPResponse(typeAuthResult, &authResult)
+	return NewIDPResponse(ResponseTypeAuthResult, &authResult)
 }

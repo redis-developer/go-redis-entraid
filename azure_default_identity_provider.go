@@ -43,5 +43,5 @@ func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse,
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
-	return newIDPResponse(typeAccessToken, &token)
+	return NewIDPResponse(ResponseTypeAccessToken, &token)
 }

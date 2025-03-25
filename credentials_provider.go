@@ -89,35 +89,35 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 		}
 		if len(e.listeners) == 0 {
 			if e.cancelTokenManager != nil {
-				e.cancelTokenManager()
+				defer func() {
+					e.cancelTokenManager = nil
+					e.listeners = nil
+				}()
+				return e.cancelTokenManager()
 			}
-			e.cancelTokenManager = nil
-			e.listeners = nil
 		}
 		return nil
 	}
 
-	return credentials, cancel, nil
+	return token, cancel, nil
 }
 
 type entraidTokenListener struct {
-	onTokenNext  func(token *Token)
-	onTokenError func(err error)
+	cp *entraidCredentialsProvider
 }
 
-func tokenListenerFromCP(cp *entraidCredentialsProvider) *entraidTokenListener {
+func tokenListenerFromCP(cp *entraidCredentialsProvider) TokenListener {
 	return &entraidTokenListener{
-		onTokenNext:  cp.onTokenNext,
-		onTokenError: cp.onTokenError,
+		cp,
 	}
 }
 
 func (l *entraidTokenListener) OnTokenNext(token *Token) {
-	l.onTokenNext(token)
+	l.cp.onTokenNext(token)
 }
 
 func (l *entraidTokenListener) OnTokenError(err error) {
-	l.onTokenError(err)
+	l.cp.onTokenError(err)
 }
 
 // newCredentialsProvider creates a new credentials provider.

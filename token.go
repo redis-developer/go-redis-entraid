@@ -38,18 +38,6 @@ func (t *Token) RawCredentials() string {
 	return t.rawToken
 }
 
-// IsExpired checks if the token is expired.
-// It returns true if the token is expired, false otherwise.
-func (t *Token) IsExpired() bool {
-	return t.expiresOn.Before(time.Now())
-}
-
-// IsValid checks if the token is valid.
-// It returns true if the token is valid, false otherwise.
-func (t *Token) IsValid() bool {
-	return !t.IsExpired()
-}
-
 // ExpirationOn returns the expiration time of the token.
 func (t *Token) ExpirationOn() time.Time {
 	return t.expiresOn

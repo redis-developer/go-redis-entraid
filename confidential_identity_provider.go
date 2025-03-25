@@ -127,5 +127,5 @@ func (c *ConfidentialIdentityProvider) RequestToken() (IdentityProviderResponse,
 		return nil, fmt.Errorf("failed to acquire token: %w", err)
 	}
 
-	return newIDPResponse(typeAuthResult, &result)
+	return NewIDPResponse(ResponseTypeAuthResult, &result)
 }
