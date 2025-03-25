@@ -31,11 +31,7 @@ func (e *entraidCredentialsProvider) onTokenNext(token *Token) {
 	defer e.rwLock.RUnlock()
 	// Notify all listeners with the new token.
 	for _, listener := range e.listeners {
-		listener.OnNext(&authCredentials{
-			username:       token.Username,
-			password:       token.Password,
-			rawCredentials: token.RawToken,
-		})
+		listener.OnNext(token)
 	}
 }
 
@@ -78,15 +74,8 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 		return nil, nil, err
 	}
 
-	// Create a new credentials object.
-	credentials := &authCredentials{
-		username:       token.Username,
-		password:       token.Password,
-		rawCredentials: token.RawToken,
-	}
-
 	// Notify the listener with the credentials.
-	listener.OnNext(credentials)
+	listener.OnNext(token)
 
 	cancel := func() error {
 		// Remove the listener from the list of listeners.

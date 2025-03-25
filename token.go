@@ -2,6 +2,8 @@ package entraid
 
 import (
 	"time"
+
+	"github.com/redis/go-redis/v9/auth"
 )
 
 // Token represents the authentication token used to access the Entraid API.
@@ -52,6 +54,9 @@ func (t *Token) IsValid() bool {
 func (t *Token) ExpirationOn() time.Time {
 	return t.expiresOn
 }
+
+// Token implements the auth.Credentials interface.
+var _ auth.Credentials = (*Token)(nil)
 
 // NewToken creates a new token with the specified username, password, raw token, expiration time, received at time, and time to live.
 func NewToken(username, password, rawToken string, expiresOn, receivedAt time.Time, ttl int64) *Token {
