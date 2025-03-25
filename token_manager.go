@@ -18,20 +18,19 @@ type TokenManagerOptions struct {
 	// ExpirationRefreshRatio is the ratio of the token expiration time to refresh the token.
 	// It is used to determine when to refresh the token.
 	// The value should be between 0 and 1.
-	// For example, if the expiration time is 1 hour and the ratio is 0.5,
-	// the token will be refreshed after 30 minutes.
+	// For example, if the expiration time is 1 hour and the ratio is 0.75,
+	// the token will be refreshed after 45 minutes. (the token is refreshed when 75% of its lifetime has passed)
 	//
 	// default: 0.7
 	ExpirationRefreshRatio float64
 
 	// LowerRefreshBoundMs is the lower bound for the refresh time in milliseconds.
-	// It is used to determine when to refresh the token.
-	// The value should be greater than 0.
-	// For example, if the expiration time is 1 hour and the lower bound is 30 minutes,
-	// the token will be refreshed after 30 minutes.
+	// Represents the minimum time in milliseconds before token expiration to trigger a refresh, in milliseconds.
+	// This value sets a fixed lower bound for when a token refresh should occur, regardless
+	// of the token's total lifetime.
 	//
 	// default: 0 ms (no lower bound, refresh based on ExpirationRefreshRatio)
-	LowerRefreshBoundMs int
+	LowerRefreshBoundMs int64
 
 	// IdentityProviderResponseParser is a function that parses the IdentityProviderResponse.
 	// The function takes the response and based on its type returns the populated Token object.
@@ -168,6 +167,8 @@ func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) (TokenMa
 		token:                          nil,
 		closed:                         make(chan struct{}),
 		expirationRefreshRatio:         options.ExpirationRefreshRatio,
+		lowerRefreshBoundMs:            options.LowerRefreshBoundMs,
+		lowerBoundDuration:             time.Duration(options.LowerRefreshBoundMs) * time.Millisecond,
 		identityProviderResponseParser: options.IdentityProviderResponseParser,
 		retryOptions:                   options.RetryOptions,
 	}, nil
@@ -175,10 +176,15 @@ func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) (TokenMa
 
 // entraidTokenManager is a struct that implements the TokenManager interface.
 type entraidTokenManager struct {
-	idp   IdentityProvider
+	// idp is the identity provider used to obtain the token.
+	idp IdentityProvider
+
+	// token is the authentication token for the user which should be kept in memory if valid.
 	token *Token
 
-	// TokenParser is a function that parses the token.
+	// identityProviderResponseParser is a function that parses the IdentityProviderResponse.
+	// it can be supplied by the user to parse the token and return the populated Token object or
+	// the default implementation will be used.
 	identityProviderResponseParser IdentityProviderResponseParserFunc
 
 	// retryOptions is a struct that contains the options for retrying the token request.
@@ -199,8 +205,22 @@ type entraidTokenManager struct {
 
 	// expirationRefreshRatio is the ratio of the token expiration time to refresh the token.
 	// It is used to determine when to refresh the token.
+	// The value should be between 0 and 1.
+	// For example, if the expiration time is 1 hour and the ratio is 0.75,
+	// the token will be refreshed after 45 minutes. (the token is refreshed when 75% of its lifetime has passed)
 	expirationRefreshRatio float64
 
+	// lowerRefreshBoundMs is the lower bound for the refresh time in milliseconds.
+	// Represents the minimum time in milliseconds before token expiration to trigger a refresh, in milliseconds.
+	// This value sets a fixed lower bound for when a token refresh should occur, regardless
+	// of the token's total lifetime.
+	lowerRefreshBoundMs int64
+
+	// lowerBoundDuration is the lower bound for the refresh time in time.Duration.
+	lowerBoundDuration time.Duration
+
+	// closed is a channel that is closed when the token manager is closed.
+	// It is used to signal the token manager to stop requesting tokens.
 	closed chan struct{}
 }
 
@@ -238,6 +258,19 @@ type TokenListener interface {
 	OnTokenError(err error)
 }
 
+func (e *entraidTokenManager) durationToRenewal() time.Duration {
+	if e.token == nil {
+		return 0
+	}
+	// Calculate the time to renew the token based on the expiration refresh ratio
+	duration := time.Duration(float64(time.Until(e.token.expiresOn)) * e.expirationRefreshRatio)
+	if duration < e.lowerBoundDuration {
+		return e.lowerBoundDuration
+	}
+
+	return duration
+}
+
 // Start starts the token manager and returns cancelFunc to stop the token manager.
 // It takes a TokenListener as an argument, which is used to receive updates.
 // The token manager will call the listener's OnTokenNext method with the updated token.
@@ -265,7 +298,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 			case <-e.closed:
 				// Token manager is closed, stop the loop
 				return
-			case <-time.After(time.Until(token.expiresOn) * time.Duration(e.expirationRefreshRatio)):
+			case <-time.After(e.durationToRenewal()):
 				// Token is about to expire, refresh it
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
 					select {
