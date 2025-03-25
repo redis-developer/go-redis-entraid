@@ -23,6 +23,9 @@ type IdentityProviderResponse interface {
 	AccessToken() *azcore.AccessToken
 }
 
+// IdentityProviderResponseParserFunc is a function that parses the token and returns the username and password.
+type IdentityProviderResponseParserFunc func(response IdentityProviderResponse) (*Token, error)
+
 // IdentityProvider is an interface that defines the methods for an identity provider.
 // It is used to request a token for authentication.
 // The identity provider is responsible for providing the raw authentication token.

@@ -1,6 +1,8 @@
 package entraid
 
-import "time"
+import (
+	"time"
+)
 
 // Token represents the authentication token used to access the Entraid API.
 // It contains the username, password, expiration time, time to live, and the raw token.
@@ -8,28 +10,77 @@ import "time"
 // The token is typically obtained from an identity provider and is used to access the Entraid API.
 // The token is valid for a limited time and must be refreshed periodically.
 type Token struct {
-	// Username is the username of the user.
-	Username string `json:"username"`
-	// Password is the password of the user.
-	Password string `json:"password"`
-	// ExpiresOn is the expiration time of the token.
-	ExpiresOn time.Time `json:"expires_on"`
-	// TTL is the time to live of the token.
-	TTL int64 `json:"ttl"`
-	// RawToken is the authentication token.
-	RawToken string `json:"raw_token"`
+	// username is the username of the user.
+	username string `json:"username"`
+	// password is the password of the user.
+	password string `json:"password"`
+	// expiresOn is the expiration time of the token.
+	expiresOn time.Time `json:"expires_on"`
+	// ttl is the time to live of the token.
+	ttl int64 `json:"ttl"`
+	// rawToken is the authentication token.
+	rawToken string `json:"raw_token"`
+	// receivedAt is the time when the token was received.
+	receivedAt time.Time `json:"received_at"`
 }
 
-// IdentityProviderResponseParserFunc is a function that parses the token and returns the username and password.
-type IdentityProviderResponseParserFunc func(response IdentityProviderResponse) (*Token, error)
+// BasicAuth returns the username and password for basic authentication.
+// It implements the auth.Credentials interface.
+func (t *Token) BasicAuth() (string, string) {
+	return t.username, t.password
+}
+
+// RawCredentials returns the raw credentials for authentication.
+// It implements the auth.Credentials interface.
+func (t *Token) RawCredentials() string {
+	return t.rawToken
+}
+
+// IsExpired checks if the token is expired.
+// It returns true if the token is expired, false otherwise.
+func (t *Token) IsExpired() bool {
+	return t.expiresOn.Before(time.Now())
+}
+
+// IsValid checks if the token is valid.
+// It returns true if the token is valid, false otherwise.
+func (t *Token) IsValid() bool {
+	return !t.IsExpired()
+}
+
+// ExpirationOn returns the expiration time of the token.
+func (t *Token) ExpirationOn() time.Time {
+	return t.expiresOn
+}
+
+// NewToken creates a new token with the specified username, password, raw token, expiration time, received at time, and time to live.
+func NewToken(username, password, rawToken string, expiresOn, receivedAt time.Time, ttl int64) *Token {
+	return &Token{
+		username:   username,
+		password:   password,
+		expiresOn:  expiresOn,
+		receivedAt: receivedAt,
+		ttl:        ttl,
+		rawToken:   rawToken,
+	}
+}
 
 // copyToken creates a copy of the token.
 func copyToken(token *Token) *Token {
-	return &Token{
-		Username:  token.Username,
-		Password:  token.Password,
-		ExpiresOn: token.ExpiresOn,
-		TTL:       token.TTL,
-		RawToken:  token.RawToken,
-	}
+	return NewToken(token.username, token.password, token.rawToken, token.expiresOn, token.receivedAt, token.ttl)
+}
+
+// compareCredentials two tokens if they are the same credentials
+func (t *Token) compareCredentials(token *Token) bool {
+	return t.username == token.username && t.password == token.password
+}
+
+// compareRawCredentials two tokens if they are the same raw credentials
+func (t *Token) compareRawCredentials(token *Token) bool {
+	return t.rawToken == token.rawToken
+}
+
+// compareToken compares two tokens if they are the same token
+func (t *Token) compareToken(token *Token) bool {
+	return t.compareCredentials(token) && t.compareRawCredentials(token)
 }

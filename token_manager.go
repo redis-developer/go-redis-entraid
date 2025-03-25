@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const MinTokenTTL = 30 * time.Minute
@@ -98,11 +100,30 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 		if authResult == nil {
 			return nil, fmt.Errorf("auth result is nil")
 		}
+		rawToken = authResult.IDToken.RawToken
+
+		username = authResult.IDToken.Oid
+		password = rawToken
+		expiresOn = authResult.ExpiresOn.UTC()
 	case typeAccessToken:
 		accessToken := response.AccessToken()
 		if accessToken == nil {
 			return nil, fmt.Errorf("access token is nil")
 		}
+
+		claims := struct {
+			jwt.RegisteredClaims
+			Oid string `json:"oid"`
+		}{}
+
+		_, err := jwt.ParseWithClaims(accessToken.Token, claims, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse jwt token: %w", err)
+		}
+		rawToken = accessToken.Token
+		username = claims.Oid
+		password = rawToken
+		expiresOn = accessToken.ExpiresOn.UTC()
 	default:
 		return nil, fmt.Errorf("unknown response type: %s", response.Type())
 	}
@@ -118,13 +139,14 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 	}
 	// parse token as jwt token and get claims
 
-	return &Token{
-		Username:  "username",
-		Password:  rawToken,
-		ExpiresOn: expiresOn.UTC(),
-		TTL:       expiresOn.UTC().Unix() - time.Now().UTC().Unix(),
-		RawToken:  rawToken,
-	}, nil
+	return NewToken(
+		username,
+		password,
+		rawToken,
+		expiresOn,
+		time.Now().UTC(),
+		int64(expiresOn.Sub(time.Now()).Seconds()),
+	), nil
 }
 
 // NewTokenManager creates a new TokenManager.
@@ -142,12 +164,12 @@ func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) (TokenMa
 	}
 
 	return &entraidTokenManager{
-		idp:                    idp,
-		token:                  nil,
-		closed:                 make(chan struct{}),
-		expirationRefreshRatio: options.ExpirationRefreshRatio,
-		tokenParser:            options.TokenParser,
-		retryOptions:           options.RetryOptions,
+		idp:                            idp,
+		token:                          nil,
+		closed:                         make(chan struct{}),
+		expirationRefreshRatio:         options.ExpirationRefreshRatio,
+		identityProviderResponseParser: options.IdentityProviderResponseParser,
+		retryOptions:                   options.RetryOptions,
 	}, nil
 }
 
@@ -183,7 +205,7 @@ type entraidTokenManager struct {
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
-	if e.token != nil && e.token.ExpiresOn.After(time.Now().Add(MinTokenTTL)) {
+	if e.token != nil && e.token.expiresOn.After(time.Now().Add(MinTokenTTL)) {
 		// copy the token so the caller can't modify it
 		return copyToken(e.token), nil
 	}
@@ -240,9 +262,19 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 		// Simulate token refresh
 		for {
 			select {
-			case <-time.After(time.Until(token.ExpiresOn) * time.Duration(e.expirationRefreshRatio)):
+			case <-e.closed:
+				// Token manager is closed, stop the loop
+				return
+			case <-time.After(time.Until(token.expiresOn) * time.Duration(e.expirationRefreshRatio)):
 				// Token is about to expire, refresh it
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
+					select {
+					case <-e.closed:
+						// Token manager is closed, stop the loop
+						return
+					default:
+						// continue to next attempt
+					}
 					token, err := e.GetToken()
 					if err == nil {
 						listener.OnTokenNext(token)
@@ -276,9 +308,6 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 						delay = time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
 					}
 				}
-			case <-e.closed:
-				// Token manager is closed, stop the loop
-				return
 			}
 		}
 	}(e.listener)
