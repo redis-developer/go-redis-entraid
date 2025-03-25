@@ -2,7 +2,7 @@ package entraid
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -32,16 +32,16 @@ func NewDefaultAzureIdentityProvider(opts DefaultAzureIdentityProviderOptions) (
 
 // RequestToken requests a token from the Azure Default Identity provider.
 // It returns the token, the expiration time, and an error if any.
-func (a *DefaultAzureIdentityProvider) RequestToken() (string, time.Time, error) {
+func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(a.options)
 	if err != nil {
-		return "", time.Time{}, err
+		return nil, fmt.Errorf("failed to create default azure credential: %w", err)
 	}
 
 	token, err := cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
 	if err != nil {
-		return "", time.Time{}, err
+		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
-	return token.Token, token.ExpiresOn.UTC(), nil
+	return newIDPResponse(typeAccessToken, &token)
 }

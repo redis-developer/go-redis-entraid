@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	mi "github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity"
 )
 
+// ManagedIdentityProviderOptions represents the options for the managed identity provider.
+// It is used to configure the identity provider when requesting a token.
 type ManagedIdentityProviderOptions struct {
 	// UserAssignedClientID is the client ID of the user assigned identity.
 	// This is used to identify the identity when requesting a token.
@@ -21,6 +22,7 @@ type ManagedIdentityProviderOptions struct {
 	Scopes []string
 }
 
+// ManagedIdentityProvider represents a managed identity provider.
 type ManagedIdentityProvider struct {
 	// userAssignedClientID is the client ID of the user assigned identity.
 	// This is used to identify the identity when requesting a token.
@@ -38,6 +40,8 @@ type ManagedIdentityProvider struct {
 	client *mi.Client
 }
 
+// NewManagedIdentityProvider creates a new managed identity provider for Azure with managed identity.
+// It is used to configure the identity provider when requesting a token.
 func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedIdentityProvider, error) {
 	var client mi.Client
 	var err error
@@ -73,9 +77,11 @@ func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedId
 	}, nil
 }
 
-func (m *ManagedIdentityProvider) RequestToken() (string, time.Time, error) {
+// RequestToken requests a token from the managed identity provider.
+// It returns IdentityProviderResponse, which contains the Acc and the expiration time.
+func (m *ManagedIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
 	if m.client == nil {
-		return "", time.Time{}, errors.New("managed identity client is not initialized")
+		return nil, errors.New("managed identity client is not initialized")
 	}
 
 	// default resource is RedisResource == "https://redis.azure.com"
@@ -87,11 +93,10 @@ func (m *ManagedIdentityProvider) RequestToken() (string, time.Time, error) {
 	}
 	// acquire token using the managed identity client
 	// the resource is the URL of the resource that the identity has access to
-	token, err := m.client.AcquireToken(context.TODO(), resource)
+	authResult, err := m.client.AcquireToken(context.TODO(), resource)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("coudn't acquire token: %w", err)
+		return nil, fmt.Errorf("coudn't acquire token: %w", err)
 	}
 
-	// return the access token
-	return token.AccessToken, token.ExpiresOn.UTC(), nil
+	return newIDPResponse(typeAuthResult, &authResult)
 }

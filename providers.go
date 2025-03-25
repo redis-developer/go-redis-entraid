@@ -6,6 +6,9 @@ import (
 	"github.com/redis/go-redis/v9/auth"
 )
 
+// CredentialsProviderOptions is a struct that holds the options for the credentials provider.
+// It is used to configure the credentials provider when requesting a token.
+// It is used to specify the client ID, TokenManagerOptions, and callback functions for re-authentication and retryable errors.
 type CredentialsProviderOptions struct {
 	// ClientID is the client ID of the identity.
 	// This is used to identify the identity when requesting a token.

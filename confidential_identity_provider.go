@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"fmt"
-	"time"
 
 	confidential "github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 )
@@ -117,17 +116,16 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 }
 
 // RequestToken requests a token from the identity provider.
-// It returns the token, the expiration time, and an error if any.
-// The token is used to authenticate the identity when requesting a token.
-func (c *ConfidentialIdentityProvider) RequestToken() (string, time.Time, error) {
+// It returns the identity provider response, including the auth result.
+func (c *ConfidentialIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
 	if c.client == nil {
-		return "", time.Time{}, fmt.Errorf("client is not initialized")
+		return nil, fmt.Errorf("client is not initialized")
 	}
 
 	result, err := c.client.AcquireTokenByCredential(context.TODO(), c.scopes)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to acquire token: %w", err)
+		return nil, fmt.Errorf("failed to acquire token: %w", err)
 	}
 
-	return result.AccessToken, result.ExpiresOn.UTC(), nil
+	return newIDPResponse(typeAuthResult, &result)
 }

@@ -20,8 +20,8 @@ type Token struct {
 	RawToken string `json:"raw_token"`
 }
 
-// TokenParserFunc is a function that parses the token and returns the username and password.
-type TokenParserFunc func(token string, expiresOn time.Time) (*Token, error)
+// IdentityProviderResponseParserFunc is a function that parses the token and returns the username and password.
+type IdentityProviderResponseParserFunc func(response IdentityProviderResponse) (*Token, error)
 
 // copyToken creates a copy of the token.
 func copyToken(token *Token) *Token {
