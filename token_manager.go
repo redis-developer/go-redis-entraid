@@ -382,7 +382,7 @@ var defaultRetryableFunc = func(err error) bool {
 		return true
 	}
 
-	if ok := errors.As(err, netErr); ok {
+	if ok := errors.As(err, &netErr); ok {
 		return netErr.Timeout()
 	}
 	return false
