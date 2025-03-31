@@ -11,8 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const MinTokenTTL = 30 * time.Minute
-
 // TokenManagerOptions is a struct that contains the options for the TokenManager.
 type TokenManagerOptions struct {
 	// ExpirationRefreshRatio is the ratio of the token expiration time to refresh the token.
@@ -62,12 +60,10 @@ type RetryOptions struct {
 	//
 	// default: 1000 ms
 	InitialDelayMs int
-
 	// MaxDelayMs is the maximum delay in milliseconds between retry attempts.
 	//
 	// default: 10000 ms
 	MaxDelayMs int
-
 	// BackoffMultiplier is the multiplier for the backoff delay.
 	// default: 2.0
 	BackoffMultiplier float64
@@ -143,7 +139,7 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 		return nil, fmt.Errorf("expires on is in the past")
 	}
 	if time.Until(expiresOn) < MinTokenTTL {
-		return nil, fmt.Errorf("expires on is less than minimum token TTL")
+		return nil, fmt.Errorf("expires on is less than minimum token TTL which is %d", MinTokenTTL)
 	}
 	// parse token as jwt token and get claims
 
@@ -162,10 +158,10 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 // The IdentityProvider is used to obtain the token, and the TokenManagerOptions contains options for the TokenManager.
 // The TokenManager is responsible for managing the token and refreshing it when necessary.
 func NewTokenManager(idp IdentityProvider, options TokenManagerOptions) (TokenManager, error) {
-	options = defaultTokenManagerOptionsOr(options)
-	if options.ExpirationRefreshRatio <= 0 || options.ExpirationRefreshRatio > 1 {
+	if options.ExpirationRefreshRatio < 0 || options.ExpirationRefreshRatio > 1 {
 		return nil, fmt.Errorf("expiration refresh ratio must be between 0 and 1")
 	}
+	options = defaultTokenManagerOptionsOr(options)
 
 	if idp == nil {
 		return nil, fmt.Errorf("identity provider is required")
@@ -397,16 +393,16 @@ func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
 	}
 
 	if retryOptions.MaxAttempts <= 0 {
-		retryOptions.MaxAttempts = 3
+		retryOptions.MaxAttempts = DefaultRetryOptionsMaxAttempts
 	}
 	if retryOptions.InitialDelayMs == 0 {
-		retryOptions.InitialDelayMs = 1000
+		retryOptions.InitialDelayMs = DefaultRetryOptionsInitialDelayMs
 	}
 	if retryOptions.BackoffMultiplier == 0 {
-		retryOptions.BackoffMultiplier = 2.0
+		retryOptions.BackoffMultiplier = DefaultRetryOptionsBackoffMultiplier
 	}
 	if retryOptions.MaxDelayMs == 0 {
-		retryOptions.MaxDelayMs = 10000
+		retryOptions.MaxDelayMs = DefaultRetryOptionsMaxDelayMs
 	}
 	return retryOptions
 }
@@ -424,8 +420,8 @@ func defaultIdentityProviderResponseParserOr(idpResponseParser IdentityProviderR
 func defaultTokenManagerOptionsOr(options TokenManagerOptions) TokenManagerOptions {
 	options.RetryOptions = defaultRetryOptionsOr(options.RetryOptions)
 	options.IdentityProviderResponseParser = defaultIdentityProviderResponseParserOr(options.IdentityProviderResponseParser)
-	if options.ExpirationRefreshRatio <= 0 || options.ExpirationRefreshRatio > 1 {
-		options.ExpirationRefreshRatio = 0.7
+	if options.ExpirationRefreshRatio == 0 {
+		options.ExpirationRefreshRatio = DefaultExpirationRefreshRatio
 	}
 	return options
 }
