@@ -142,7 +142,7 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 	if expiresOn.Before(time.Now()) {
 		return nil, fmt.Errorf("expires on is in the past")
 	}
-	if expiresOn.Sub(time.Now()) < MinTokenTTL {
+	if time.Until(expiresOn) < MinTokenTTL {
 		return nil, fmt.Errorf("expires on is less than minimum token TTL")
 	}
 	// parse token as jwt token and get claims
@@ -153,7 +153,7 @@ var defaultIdentityProviderResponseParser = func(response IdentityProviderRespon
 		rawToken,
 		expiresOn,
 		time.Now().UTC(),
-		int64(expiresOn.Sub(time.Now()).Seconds()),
+		int64(time.Until(expiresOn).Seconds()),
 	), nil
 }
 
@@ -309,6 +309,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 				return
 			case <-time.After(e.durationToRenewal()):
 				// Token is about to expire, refresh it
+				delay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
 					select {
 					case <-e.closed:
@@ -325,29 +326,27 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 					// check if err is retryable
 					if e.retryOptions.IsRetryable(err) {
 						// retryable error, continue to next attempt
+						// Exponential backoff
+						if i == e.retryOptions.MaxAttempts-1 {
+							// last attempt, call OnTokenError
+							listener.OnTokenError(err)
+							return
+						}
+
+						if delay < time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
+							delay = time.Duration(float64(delay) * e.retryOptions.BackoffMultiplier)
+						}
+
+						time.Sleep(delay)
+
+						if delay > time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
+							delay = time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
+						}
 						continue
 					} else {
 						// not retryable
 						listener.OnTokenError(err)
 						return
-					}
-
-					// check if max attempts reached
-					if i == e.retryOptions.MaxAttempts-1 {
-						listener.OnTokenError(err)
-						return
-					}
-
-					// Exponential backoff
-					delay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
-					if delay < time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
-						delay = time.Duration(float64(delay) * e.retryOptions.BackoffMultiplier)
-					}
-
-					time.Sleep(delay)
-
-					if delay > time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
-						delay = time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
 					}
 				}
 			}

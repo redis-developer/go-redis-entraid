@@ -13,17 +13,17 @@ import (
 // The token is valid for a limited time and must be refreshed periodically.
 type Token struct {
 	// username is the username of the user.
-	username string `json:"username"`
+	username string
 	// password is the password of the user.
-	password string `json:"password"`
+	password string
 	// expiresOn is the expiration time of the token.
-	expiresOn time.Time `json:"expires_on"`
+	expiresOn time.Time
 	// ttl is the time to live of the token.
-	ttl int64 `json:"ttl"`
+	ttl int64
 	// rawToken is the authentication token.
-	rawToken string `json:"raw_token"`
+	rawToken string
 	// receivedAt is the time when the token was received.
-	receivedAt time.Time `json:"received_at"`
+	receivedAt time.Time
 }
 
 // BasicAuth returns the username and password for basic authentication.

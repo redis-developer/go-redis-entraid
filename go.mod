@@ -2,11 +2,9 @@ module github.com/redis-developer/go-redis-entraid
 
 go 1.18
 
-replace github.com/redis/go-redis/v9 => /Users/nedyalko.dyakov/go-redis/
-
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.8.2
-	github.com/redis/go-redis/v9 v9.7.1
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.8.0-beta.1
+	github.com/redis/go-redis/v9 v9.5.3-0.20250331212737-c248425ade4a
 	github.com/stretchr/testify v1.10.0
 )
 
