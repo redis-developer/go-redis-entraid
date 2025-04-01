@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	confidential "github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 )
 
 // ConfidentialIdentityProviderOptions represents the options for the confidential identity provider.

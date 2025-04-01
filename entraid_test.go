@@ -1,6 +1,8 @@
 package entraid
 
 import (
+	"net"
+
 	"github.com/stretchr/testify/mock"
 )
 
@@ -17,3 +19,26 @@ func (m *mockIdentityProvider) RequestToken() (IdentityProviderResponse, error) 
 
 // Ensure mockIdentityProvider implements the IdentityProvider interface
 var _ IdentityProvider = (*mockIdentityProvider)(nil)
+
+type mockError struct {
+	// Mock implementation of the network error
+	error
+	isTimeout   bool
+	isTemporary bool
+}
+
+func (m *mockError) Timeout() bool {
+	return m.isTimeout
+}
+func (m *mockError) Temporary() bool {
+	return m.isTemporary
+}
+func (m *mockError) Unwrap() error {
+	return m.error
+}
+
+func (m *mockError) Is(err error) bool {
+	return m.error == err
+}
+
+var _ net.Error = (*mockError)(nil)

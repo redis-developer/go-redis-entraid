@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -21,7 +22,6 @@ type TokenManagerOptions struct {
 	//
 	// default: 0.7
 	ExpirationRefreshRatio float64
-
 	// LowerRefreshBoundMs is the lower bound for the refresh time in milliseconds.
 	// Represents the minimum time in milliseconds before token expiration to trigger a refresh, in milliseconds.
 	// This value sets a fixed lower bound for when a token refresh should occur, regardless
@@ -29,7 +29,6 @@ type TokenManagerOptions struct {
 	//
 	// default: 0 ms (no lower bound, refresh based on ExpirationRefreshRatio)
 	LowerRefreshBoundMs int64
-
 	// IdentityProviderResponseParser is a function that parses the IdentityProviderResponse.
 	// The function takes the response and based on its type returns the populated Token object.
 	// If this function is not provided, the default implementation will be used.
@@ -37,7 +36,6 @@ type TokenManagerOptions struct {
 	// required: true
 	// default: defaultIdentityProviderResponseParser
 	IdentityProviderResponseParser IdentityProviderResponseParserFunc
-
 	// RetryOptions is a struct that contains the options for retrying the token request.
 	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
 	//
@@ -83,7 +81,7 @@ type TokenManager interface {
 }
 
 // defaultIdentityProviderResponseParser is a function that parses the token and returns the username and password.
-var defaultIdentityProviderResponseParser = func(response IdentityProviderResponse) (*Token, error) {
+var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = func(response IdentityProviderResponse) (*Token, error) {
 	var username, password, rawToken string
 	var expiresOn time.Time
 	if response == nil {
@@ -253,7 +251,7 @@ func (e *entraidTokenManager) GetToken() (*Token, error) {
 // cancelFunc is a function that cancels the token manager.
 type cancelFunc func() error
 
-// TokenListener is a interface that contains the methods for receiving updates from the token manager.
+// TokenListener is an interface that contains the methods for receiving updates from the token manager.
 // The token manager will call the listener's OnTokenNext method with the updated token.
 // If an error occurs, the token manager will call the listener's OnTokenError method with the error.
 type TokenListener interface {
@@ -371,16 +369,18 @@ func (e *entraidTokenManager) Close() error {
 // defaultRetryableFunc is a function that checks if the error is retryable.
 // It takes an error as an argument and returns a boolean value.
 // The function checks if the error is a net.Error and if it is a timeout or temporary error.
-var defaultRetryableFunc = func(err error) bool {
+var defaultIsRetryable func(err error) bool = func(err error) bool {
 	var netErr net.Error
 	if err == nil {
 		return true
 	}
 
+	// nolint:staticcheck // SA1019 deprecated netErr.Temporary
 	if ok := errors.As(err, &netErr); ok {
-		return netErr.Timeout()
+		return netErr.Timeout() || netErr.Temporary()
 	}
-	return false
+
+	return errors.Is(err, os.ErrDeadlineExceeded)
 }
 
 // defaultRetryOptionsOr returns the default retry options if the provided options are not set.
@@ -389,7 +389,7 @@ var defaultRetryableFunc = func(err error) bool {
 // The values can be overridden by the user.
 func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
 	if retryOptions.IsRetryable == nil {
-		retryOptions.IsRetryable = defaultRetryableFunc
+		retryOptions.IsRetryable = defaultIsRetryable
 	}
 
 	if retryOptions.MaxAttempts <= 0 {
