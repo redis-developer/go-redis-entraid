@@ -407,4 +407,51 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 	})
+
+	t.Run("NewIDPResponse with type Unknown", func(t *testing.T) {
+		idpResponse, err := NewIDPResponse("Unknown", testJWTtoken)
+		assert.Error(t, err)
+		assert.Nil(t, idpResponse)
+	})
+
+	t.Run("NewIDPResponse with type and nil value", func(t *testing.T) {
+		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, nil)
+		assert.Error(t, err)
+		assert.Nil(t, idpResponse)
+		idpResponse, err = NewIDPResponse(ResponseTypeAuthResult, nil)
+		assert.Error(t, err)
+		assert.Nil(t, idpResponse)
+		idpResponse, err = NewIDPResponse(ResponseTypeAccessToken, nil)
+		assert.Error(t, err)
+		assert.Nil(t, idpResponse)
+	})
+	t.Run("Default IdentityProviderResponseParser with type Unknown", func(t *testing.T) {
+		resp := &authResult{
+			resultType: "Unknown",
+		}
+		token, err := defaultIdentityProviderResponseParser(resp)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
+	types := []string{
+		ResponseTypeAuthResult,
+		ResponseTypeAccessToken,
+		ResponseTypeRawToken,
+	}
+	for _, rt := range types {
+		t.Run(fmt.Sprintf("Default IdentityProviderResponseParser with response type %s and nil value", rt), func(t *testing.T) {
+			resp := &authResult{
+				resultType: rt,
+			}
+			token, err := defaultIdentityProviderResponseParser(resp)
+			assert.Error(t, err)
+			assert.Nil(t, token)
+		})
+	}
+
+	t.Run("Default IdentityProviderResponseParser with response nil", func(t *testing.T) {
+		token, err := defaultIdentityProviderResponseParser(nil)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
 }
