@@ -2,9 +2,12 @@ package entraid
 
 import (
 	"net"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 )
+
+const testJWTtoken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0MzUxNTAxMSwiZXhwIjoxNzc1MDUxMDExLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.6RG721V2eFlSLsCRmo53kSRRrTZIe1UPdLZCUEvIarU"
 
 type mockIdentityProvider struct {
 	// Mock implementation of the IdentityProvider interface
@@ -42,3 +45,32 @@ func (m *mockError) Is(err error) bool {
 }
 
 var _ net.Error = (*mockError)(nil)
+
+type mockTokenListener struct {
+	// Mock implementation of the TokenManagerListener interface
+	mock.Mock
+}
+
+var _ TokenListener = (*mockTokenListener)(nil)
+
+func (m *mockTokenListener) OnTokenNext(token *Token) {
+	_ = m.Called(token)
+}
+
+func (m *mockTokenListener) OnTokenError(err error) {
+	_ = m.Called(err)
+}
+
+func mockTokenParserFunc(idpResponse IdentityProviderResponse) (*Token, error) {
+	if idpResponse != nil && idpResponse.Type() == ResponseTypeRawToken {
+		return NewToken(
+			"test",
+			"password",
+			"test",
+			time.Now().Add(time.Hour),
+			time.Now(),
+			int64(time.Hour),
+		), nil
+	}
+	return nil, nil
+}

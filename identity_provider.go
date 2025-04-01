@@ -63,10 +63,12 @@ func (a *authResult) RawToken() string {
 
 // NewIDPResponse creates a new auth result based on the type provided.
 // It returns an IdentityProviderResponse interface.
-func NewIDPResponse(t string, result interface{}) (IdentityProviderResponse, error) {
-	r := &authResult{resultType: t}
+// Type can be either AuthResult, AccessToken, or RawToken.
+// Second argument is the result of the type provided in the first argument.
+func NewIDPResponse(responseType string, result interface{}) (IdentityProviderResponse, error) {
+	r := &authResult{resultType: responseType}
 
-	switch t {
+	switch responseType {
 	case ResponseTypeAuthResult:
 		if typed, ok := result.(*public.AuthResult); !ok {
 			return nil, fmt.Errorf("expected AuthResult, got %T", result)
@@ -86,7 +88,7 @@ func NewIDPResponse(t string, result interface{}) (IdentityProviderResponse, err
 			r.rawToken = typed
 		}
 	default:
-		return nil, fmt.Errorf("unknown idp response type: %s", t)
+		return nil, fmt.Errorf("unknown idp response type: %s", responseType)
 	}
 
 	return r, nil

@@ -111,10 +111,11 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 
 		claims := struct {
 			jwt.RegisteredClaims
-			Oid string `json:"oid"`
+			Oid string `json:"oid,omitempty"`
 		}{}
 
-		_, err := jwt.ParseWithClaims(token, claims, nil)
+		// jwt token should be verified from the identity provider
+		_, _, err := jwt.NewParser().ParseUnverified(token, &claims)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse jwt token: %w", err)
 		}
@@ -282,13 +283,14 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if e.listener != nil {
-		return nil, fmt.Errorf("token manager already started")
+		return nil, ErrTokenManagerAlreadyStarted
 	}
 	e.listener = listener
 	e.closed = make(chan struct{})
 
 	token, err := e.GetToken()
 	if err != nil {
+		go listener.OnTokenError(err)
 		return nil, fmt.Errorf("failed to start token manager: %w", err)
 	}
 
@@ -350,20 +352,25 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	return e.Close, nil
 }
 
-func (e *entraidTokenManager) Close() error {
+func (e *entraidTokenManager) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			// handle panic
 			log.Printf("Recovered from panic: %v", r)
+			err = ErrTokenManagerAlreadyCanceled
 		}
 	}()
 	e.lock.Lock()
 	defer e.lock.Unlock()
+
+	if e.closed == nil || e.listener == nil {
+		err = ErrTokenManagerNotStarted
+		return
+	}
 	if e.listener != nil {
 		e.listener = nil
 	}
 	close(e.closed)
-	return nil
+	return
 }
 
 // defaultRetryableFunc is a function that checks if the error is retryable.
