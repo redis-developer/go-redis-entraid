@@ -90,8 +90,8 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 	switch response.Type() {
 	case ResponseTypeAuthResult:
 		authResult := response.AuthResult()
-		if authResult == nil {
-			return nil, fmt.Errorf("auth result is nil")
+		if authResult.IDToken.RawToken == "" {
+			return nil, fmt.Errorf("auth result id token is empty")
 		}
 		rawToken = authResult.IDToken.RawToken
 
@@ -102,8 +102,8 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 		token := response.RawToken()
 		if response.Type() == ResponseTypeAccessToken {
 			accessToken := response.AccessToken()
-			if accessToken == nil {
-				return nil, fmt.Errorf("access token is nil")
+			if accessToken.Token == "" {
+				return nil, fmt.Errorf("access token is empty")
 			}
 			token = accessToken.Token
 			expiresOn = accessToken.ExpiresOn.UTC()

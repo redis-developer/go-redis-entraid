@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
@@ -16,8 +17,13 @@ type DefaultAzureIdentityProviderOptions struct {
 	Scopes []string
 }
 
+type defaultAzureCredential interface {
+	GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error)
+}
+
 type DefaultAzureIdentityProvider struct {
 	options *azidentity.DefaultAzureCredentialOptions
+	cred    defaultAzureCredential
 	scopes  []string
 }
 
@@ -33,12 +39,15 @@ func NewDefaultAzureIdentityProvider(opts DefaultAzureIdentityProviderOptions) (
 // RequestToken requests a token from the Azure Default Identity provider.
 // It returns the token, the expiration time, and an error if any.
 func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
-	cred, err := azidentity.NewDefaultAzureCredential(a.options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create default azure credential: %w", err)
+	var err error
+	if a.cred == nil {
+		a.cred, err = azidentity.NewDefaultAzureCredential(a.options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create default azure credential: %w", err)
+		}
 	}
 
-	token, err := cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
+	token, err := a.cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}

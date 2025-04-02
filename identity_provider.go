@@ -21,8 +21,8 @@ const (
 type IdentityProviderResponse interface {
 	// Type returns the type of the auth result
 	Type() string
-	AuthResult() *public.AuthResult
-	AccessToken() *azcore.AccessToken
+	AuthResult() public.AuthResult
+	AccessToken() azcore.AccessToken
 	RawToken() string
 }
 
@@ -49,12 +49,18 @@ func (a *authResult) Type() string {
 	return a.resultType
 }
 
-func (a *authResult) AuthResult() *public.AuthResult {
-	return a.authResult
+func (a *authResult) AuthResult() public.AuthResult {
+	if a.authResult == nil {
+		return public.AuthResult{}
+	}
+	return *a.authResult
 }
 
-func (a *authResult) AccessToken() *azcore.AccessToken {
-	return a.accessToken
+func (a *authResult) AccessToken() azcore.AccessToken {
+	if a.accessToken == nil {
+		return azcore.AccessToken{}
+	}
+	return *a.accessToken
 }
 
 func (a *authResult) RawToken() string {
@@ -90,6 +96,5 @@ func NewIDPResponse(responseType string, result interface{}) (IdentityProviderRe
 	default:
 		return nil, fmt.Errorf("unknown idp response type: %s", responseType)
 	}
-
 	return r, nil
 }
