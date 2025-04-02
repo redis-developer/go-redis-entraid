@@ -90,8 +90,8 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 	switch response.Type() {
 	case ResponseTypeAuthResult:
 		authResult := response.AuthResult()
-		if authResult.ExpiresOn.Before(time.Now()) {
-			return nil, fmt.Errorf("auth result expired or invalid")
+		if authResult.ExpiresOn.IsZero() {
+			return nil, fmt.Errorf("auth result invalid")
 		}
 		rawToken = authResult.IDToken.RawToken
 		username = authResult.IDToken.Oid
@@ -130,12 +130,16 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 		return nil, fmt.Errorf("unknown response type: %s", response.Type())
 	}
 
+	expiresOn = expiresOn.UTC()
+
 	if expiresOn.IsZero() {
 		return nil, fmt.Errorf("expires on is zero")
 	}
+
 	if expiresOn.Before(time.Now()) {
 		return nil, fmt.Errorf("expires on is in the past")
 	}
+
 	if time.Until(expiresOn) < MinTokenTTL {
 		return nil, fmt.Errorf("expires on is less than minimum token TTL which is %d", MinTokenTTL)
 	}

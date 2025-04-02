@@ -459,4 +459,37 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
+	t.Run("Default IdentityProviderResponseParser with expired token", func(t *testing.T) {
+		authResult := &public.AuthResult{
+			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			authResult)
+		assert.NoError(t, err)
+		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
+	t.Run("Default IdentityProviderResponseParser with token that will expire soon", func(t *testing.T) {
+		authResult := &public.AuthResult{
+			ExpiresOn: time.Now().Add(MinTokenTTL).Add(-time.Minute).UTC(),
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			authResult)
+		assert.NoError(t, err)
+		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
+	t.Run("Default IdentityProviderResponseParser with token that expired", func(t *testing.T) {
+		authResult := &public.AuthResult{
+			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			authResult)
+		assert.NoError(t, err)
+		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
 }
