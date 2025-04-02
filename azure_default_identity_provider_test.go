@@ -49,18 +49,19 @@ func TestAzureDefaultIdentityProvider_RequestToken(t *testing.T) {
 	assert.Error(t, err, "failed to request token")
 
 	// use mockAzureCredential to simulate the environment
-	mockCreds := &mockAzureCredential{}
-	provider.cred = mockCreds
-	mockToken := azcore.AccessToken{
+	mToken := azcore.AccessToken{
 		Token: testJWTtoken,
 	}
-	mockCreds.On("GetToken", mock.Anything, mock.Anything).Return(mockToken, nil)
-
+	mCreds := &mockAzureCredential{}
+	mCreds.On("GetToken", mock.Anything, mock.Anything).Return(mToken, nil)
+	mCredFactory := &mockCredFactory{}
+	mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(mCreds, nil)
+	provider.credFactory = mCredFactory
 	token, err = provider.RequestToken()
 	assert.NotNil(t, token, "token should not be nil")
 	assert.NoError(t, err, "failed to request token")
 	assert.Equal(t, ResponseTypeAccessToken, token.Type(), "token type should be access token")
-	assert.Equal(t, mockToken, token.AccessToken(), "access token should be equal to testJWTtoken")
+	assert.Equal(t, mToken, token.AccessToken(), "access token should be equal to testJWTtoken")
 }
 
 func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
@@ -73,22 +74,34 @@ func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
 		t.Fatalf("failed to create DefaultAzureIdentityProvider: %v", err)
 	}
 
-	// Request a token from the provider
-	token, err := provider.RequestToken()
-	assert.Nil(t, token, "token should be nil")
-	assert.Error(t, err, "failed to request token")
+	t.Run("RequestToken with custom scopes", func(t *testing.T) {
+		// Request a token from the provider
+		token, err := provider.RequestToken()
+		assert.Nil(t, token, "token should be nil")
+		assert.Error(t, err, "failed to request token")
 
-	// use mockAzureCredential to simulate the environment
-	mockCreds := &mockAzureCredential{}
-	provider.cred = mockCreds
-	mockToken := azcore.AccessToken{
-		Token: testJWTtoken,
-	}
-	mockCreds.On("GetToken", mock.Anything, policy.TokenRequestOptions{Scopes: scopes}).Return(mockToken, nil)
-
-	token, err = provider.RequestToken()
-	assert.NotNil(t, token, "token should not be nil")
-	assert.NoError(t, err, "failed to request token")
-	assert.Equal(t, ResponseTypeAccessToken, token.Type(), "token type should be access token")
-	assert.Equal(t, mockToken, token.AccessToken(), "access token should be equal to testJWTtoken")
+		// use mockAzureCredential to simulate the environment
+		mToken := azcore.AccessToken{
+			Token: testJWTtoken,
+		}
+		mCreds := &mockAzureCredential{}
+		mCreds.On("GetToken", mock.Anything, policy.TokenRequestOptions{Scopes: scopes}).Return(mToken, nil)
+		mCredFactory := &mockCredFactory{}
+		mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(mCreds, nil)
+		provider.credFactory = mCredFactory
+		token, err = provider.RequestToken()
+		assert.NotNil(t, token, "token should not be nil")
+		assert.NoError(t, err, "failed to request token")
+		assert.Equal(t, ResponseTypeAccessToken, token.Type(), "token type should be access token")
+		assert.Equal(t, mToken, token.AccessToken(), "access token should be equal to testJWTtoken")
+	})
+	t.Run("RequestToken with error from credFactory", func(t *testing.T) {
+		// use mockAzureCredential to simulate the environment
+		mCredFactory := &mockCredFactory{}
+		mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(nil, assert.AnError)
+		provider.credFactory = mCredFactory
+		token, err := provider.RequestToken()
+		assert.Nil(t, token, "token should be nil")
+		assert.Error(t, err, "failed to request token")
+	})
 }

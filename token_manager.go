@@ -90,11 +90,10 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 	switch response.Type() {
 	case ResponseTypeAuthResult:
 		authResult := response.AuthResult()
-		if authResult.IDToken.RawToken == "" {
-			return nil, fmt.Errorf("auth result id token is empty")
+		if authResult.ExpiresOn.Before(time.Now()) {
+			return nil, fmt.Errorf("auth result expired or invalid")
 		}
 		rawToken = authResult.IDToken.RawToken
-
 		username = authResult.IDToken.Oid
 		password = rawToken
 		expiresOn = authResult.ExpiresOn.UTC()

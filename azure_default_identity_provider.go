@@ -15,16 +15,31 @@ type DefaultAzureIdentityProviderOptions struct {
 	AzureOptions *azidentity.DefaultAzureCredentialOptions
 	// Scopes is the list of scopes used to request a token from the identity provider.
 	Scopes []string
+
+	// credFactory is a factory for creating the default Azure credential.
+	// This is used for testing purposes, to allow mocking the credential creation.
+	// If not provided, the default implementation - azidentity.NewDefaultAzureCredential will be used
+	credFactory credFactory
+}
+
+type credFactory interface {
+	NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (defaultAzureCredential, error)
 }
 
 type defaultAzureCredential interface {
 	GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error)
 }
 
+type defaultCredFactory struct{}
+
+func (d *defaultCredFactory) NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (defaultAzureCredential, error) {
+	return azidentity.NewDefaultAzureCredential(options)
+}
+
 type DefaultAzureIdentityProvider struct {
-	options *azidentity.DefaultAzureCredentialOptions
-	cred    defaultAzureCredential
-	scopes  []string
+	options     *azidentity.DefaultAzureCredentialOptions
+	credFactory credFactory
+	scopes      []string
 }
 
 // NewDefaultAzureIdentityProvider creates a new DefaultAzureIdentityProvider.
@@ -33,21 +48,26 @@ func NewDefaultAzureIdentityProvider(opts DefaultAzureIdentityProviderOptions) (
 		opts.Scopes = []string{RedisScopeDefault}
 	}
 
-	return &DefaultAzureIdentityProvider{options: opts.AzureOptions, scopes: opts.Scopes}, nil
+	return &DefaultAzureIdentityProvider{
+		options:     opts.AzureOptions,
+		scopes:      opts.Scopes,
+		credFactory: opts.credFactory,
+	}, nil
 }
 
 // RequestToken requests a token from the Azure Default Identity provider.
 // It returns the token, the expiration time, and an error if any.
 func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
-	var err error
-	if a.cred == nil {
-		a.cred, err = azidentity.NewDefaultAzureCredential(a.options)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create default azure credential: %w", err)
-		}
+	credFactory := a.credFactory
+	if credFactory == nil {
+		credFactory = &defaultCredFactory{}
+	}
+	cred, err := credFactory.NewDefaultAzureCredential(a.options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create default azure credential: %w", err)
 	}
 
-	token, err := a.cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
+	token, err := cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %w", err)
 	}

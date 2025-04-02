@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -379,27 +380,30 @@ func TestTokenManager_Start(t *testing.T) {
 
 func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	t.Parallel()
-	/*
-		t.Run("Default IdentityProviderResponseParser with type AuthResult", func(t *testing.T) {
-			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
-				&public.AuthResult{
-					ExpiresOn: time.Now().Add(time.Hour),
-				})
-			assert.NoError(t, err)
-			//_, err := defaultIdentityProviderResponseParser(idpResponse)
-			//assert.NoError(t, err)
-			//assert.NotNil(t, token)
-		})
-	*/
-	t.Run("Default IdentityProviderResponseParser with type AccessToken", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse(ResponseTypeAccessToken, &azcore.AccessToken{
-			Token:     testJWTtoken,
-			ExpiresOn: time.Now().Add(time.Hour),
-		})
+	t.Run("Default IdentityProviderResponseParser with type AuthResult", func(t *testing.T) {
+		authResult := &public.AuthResult{
+			ExpiresOn: time.Now().Add(time.Hour).UTC(),
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			authResult)
 		assert.NoError(t, err)
 		token, err := defaultIdentityProviderResponseParser(idpResponse)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
+		assert.Equal(t, authResult.ExpiresOn, token.ExpirationOn())
+	})
+	t.Run("Default IdentityProviderResponseParser with type AccessToken", func(t *testing.T) {
+		accessToken := &azcore.AccessToken{
+			Token:     testJWTtoken,
+			ExpiresOn: time.Now().Add(time.Hour).UTC(),
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAccessToken, accessToken)
+		assert.NoError(t, err)
+		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		assert.NoError(t, err)
+		assert.NotNil(t, token)
+		assert.Equal(t, accessToken.ExpiresOn, token.ExpirationOn())
+		assert.Equal(t, accessToken.Token, token.RawCredentials())
 	})
 	t.Run("Default IdentityProviderResponseParser with type RawToken", func(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTtoken)
