@@ -26,8 +26,12 @@ type IdentityProviderResponse interface {
 	RawToken() string
 }
 
-// IdentityProviderResponseParserFunc is a function that parses the token and returns the username and password.
-type IdentityProviderResponseParserFunc func(response IdentityProviderResponse) (*Token, error)
+// IdentityProviderResponseParser is an interface that defines the methods for parsing the identity provider response.
+// It is used to parse the response from the identity provider and extract the token.
+// If not provided, the default implementation will be used.
+type IdentityProviderResponseParser interface {
+	ParseResponse(response IdentityProviderResponse) (*Token, error)
+}
 
 // IdentityProvider is an interface that defines the methods for an identity provider.
 // It is used to request a token for authentication.

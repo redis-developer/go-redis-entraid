@@ -23,6 +23,28 @@ import (
 //	}
 const testJWTtoken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0MzUxNTAxMSwiZXhwIjoxNzc1MDUxMDExLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.6RG721V2eFlSLsCRmo53kSRRrTZIe1UPdLZCUEvIarU"
 
+var testTokenValid = NewToken(
+	"test",
+	"password",
+	"test",
+	time.Now().Add(time.Hour),
+	time.Now(),
+	int64(time.Hour),
+)
+
+type mockIdentityProviderResponseParser struct {
+	// Mock implementation of the IdentityProviderResponseParser interface
+	mock.Mock
+}
+
+func (m *mockIdentityProviderResponseParser) ParseResponse(response IdentityProviderResponse) (*Token, error) {
+	args := m.Called(response)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*Token), args.Error(1)
+}
+
 type mockIdentityProvider struct {
 	// Mock implementation of the IdentityProvider interface
 	// Add any necessary fields or methods for the mock identity provider here
@@ -73,20 +95,6 @@ func (m *mockTokenListener) OnTokenNext(token *Token) {
 
 func (m *mockTokenListener) OnTokenError(err error) {
 	_ = m.Called(err)
-}
-
-func mockTokenParserFunc(idpResponse IdentityProviderResponse) (*Token, error) {
-	if idpResponse != nil && idpResponse.Type() == ResponseTypeRawToken {
-		return NewToken(
-			"test",
-			"password",
-			"test",
-			time.Now().Add(time.Hour),
-			time.Now(),
-			int64(time.Hour),
-		), nil
-	}
-	return nil, nil
 }
 
 type mockAzureCredential struct {

@@ -14,7 +14,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 var assertFuncNameMatches = func(t *testing.T, func1, func2 interface{}) {
@@ -86,17 +85,16 @@ func TestTokenManagerWithOptions(t *testing.T) {
 
 func TestDefaultIdentityProviderResponseParserOr(t *testing.T) {
 	t.Parallel()
-	var f IdentityProviderResponseParserFunc = func(response IdentityProviderResponse) (*Token, error) {
-		return nil, nil
-	}
+	var f IdentityProviderResponseParser = &mockIdentityProviderResponseParser{}
 
 	result := defaultIdentityProviderResponseParserOr(f)
 	assert.NotNil(t, result)
-	assertFuncNameMatches(t, result, f)
+	assert.Equal(t, result, f)
 
-	defaultFunc := defaultIdentityProviderResponseParserOr(nil)
-	assert.NotNil(t, defaultFunc)
-	assertFuncNameMatches(t, defaultFunc, defaultIdentityProviderResponseParser)
+	defaultParser := defaultIdentityProviderResponseParserOr(nil)
+	assert.NotNil(t, defaultParser)
+	assert.NotEqual(t, defaultParser, f)
+	assert.Equal(t, entraidIdentityProviderResponseParser, defaultParser)
 }
 
 func TestDefaultIsRetryable(t *testing.T) {
@@ -142,9 +140,10 @@ func TestTokenManager_Close(t *testing.T) {
 	t.Run("Close", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{
-				IdentityProviderResponseParser: mockTokenParserFunc,
+				IdentityProviderResponseParser: mParser,
 			},
 		)
 		assert.NoError(t, err)
@@ -160,7 +159,8 @@ func TestTokenManager_Close(t *testing.T) {
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+		listener.On("OnTokenNext", testTokenValid).Return()
 
 		assert.NotPanics(t, func() {
 			cancel, err := tokenManager.Start(listener)
@@ -182,9 +182,10 @@ func TestTokenManager_Close(t *testing.T) {
 	t.Run("Close with Cancel", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{
-				IdentityProviderResponseParser: mockTokenParserFunc,
+				IdentityProviderResponseParser: mParser,
 			},
 		)
 		assert.NoError(t, err)
@@ -197,7 +198,8 @@ func TestTokenManager_Close(t *testing.T) {
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+		listener.On("OnTokenNext", testTokenValid).Return()
 
 		assert.NotPanics(t, func() {
 			cancel, err := tokenManager.Start(listener)
@@ -215,9 +217,10 @@ func TestTokenManager_Close(t *testing.T) {
 	t.Run("Close in multiple threads", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{
-				IdentityProviderResponseParser: mockTokenParserFunc,
+				IdentityProviderResponseParser: mParser,
 			},
 		)
 		assert.NoError(t, err)
@@ -230,7 +233,8 @@ func TestTokenManager_Close(t *testing.T) {
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+		listener.On("OnTokenNext", testTokenValid).Return()
 
 		assert.NotPanics(t, func() {
 			cancel, err := tokenManager.Start(listener)
@@ -273,9 +277,10 @@ func TestTokenManager_Start(t *testing.T) {
 	t.Run("Start in multiple threads", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{
-				IdentityProviderResponseParser: mockTokenParserFunc,
+				IdentityProviderResponseParser: mParser,
 			},
 		)
 		assert.NoError(t, err)
@@ -288,7 +293,8 @@ func TestTokenManager_Start(t *testing.T) {
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+		listener.On("OnTokenNext", testTokenValid).Return()
 
 		assert.NotPanics(t, func() {
 			var hasStarted int
@@ -326,9 +332,10 @@ func TestTokenManager_Start(t *testing.T) {
 	t.Run("concurrent stress token manager", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{
-				IdentityProviderResponseParser: mockTokenParserFunc,
+				IdentityProviderResponseParser: mParser,
 			},
 		)
 		assert.NoError(t, err)
@@ -354,7 +361,8 @@ func TestTokenManager_Start(t *testing.T) {
 						_ = tokenManager.Close()
 					} else {
 						idp.On("RequestToken").Return(rawResponse, nil)
-						listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+						mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+						listener.On("OnTokenNext", testTokenValid).Return()
 						_, _ = tokenManager.Start(listener)
 					}
 					atomic.StoreInt32(&last, int32(num))
@@ -380,6 +388,7 @@ func TestTokenManager_Start(t *testing.T) {
 
 func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	t.Parallel()
+	parser := &defaultIdentityProviderResponseParser{}
 	t.Run("Default IdentityProviderResponseParser with type AuthResult", func(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(time.Hour).UTC(),
@@ -387,7 +396,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.Equal(t, authResult.ExpiresOn, token.ExpirationOn())
@@ -399,7 +408,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		}
 		idpResponse, err := NewIDPResponse(ResponseTypeAccessToken, accessToken)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.Equal(t, accessToken.ExpiresOn, token.ExpirationOn())
@@ -408,7 +417,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	t.Run("Default IdentityProviderResponseParser with type RawToken", func(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTtoken)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 	})
@@ -434,7 +443,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		resp := &authResult{
 			resultType: "Unknown",
 		}
-		token, err := defaultIdentityProviderResponseParser(resp)
+		token, err := parser.ParseResponse(resp)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -448,14 +457,14 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 			resp := &authResult{
 				resultType: rt,
 			}
-			token, err := defaultIdentityProviderResponseParser(resp)
+			token, err := parser.ParseResponse(resp)
 			assert.Error(t, err)
 			assert.Nil(t, token)
 		})
 	}
 
 	t.Run("Default IdentityProviderResponseParser with response nil", func(t *testing.T) {
-		token, err := defaultIdentityProviderResponseParser(nil)
+		token, err := parser.ParseResponse(nil)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -466,7 +475,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -477,7 +486,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -488,8 +497,44 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := defaultIdentityProviderResponseParser(idpResponse)
+		token, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
+}
+
+func TestEntraidTokenManager_GetToken(t *testing.T) {
+	t.Parallel()
+	t.Run("GetToken", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{
+				IdentityProviderResponseParser: mParser,
+			},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		assert.NoError(t, err)
+
+		idp.On("RequestToken").Return(rawResponse, nil)
+		mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+		listener.On("OnTokenNext", testTokenValid).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		token, err := tokenManager.GetToken()
+		assert.NoError(t, err)
+		assert.NotNil(t, token)
+	})
+
 }

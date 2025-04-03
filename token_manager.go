@@ -29,13 +29,15 @@ type TokenManagerOptions struct {
 	//
 	// default: 0 ms (no lower bound, refresh based on ExpirationRefreshRatio)
 	LowerRefreshBoundMs int64
-	// IdentityProviderResponseParser is a function that parses the IdentityProviderResponse.
-	// The function takes the response and based on its type returns the populated Token object.
-	// If this function is not provided, the default implementation will be used.
+
+	// IdentityProviderResponseParser is an optional object that implements the IdentityProviderResponseParser interface.
+	// It is used to parse the response from the identity provider and extract the token.
+	// If not provided, the default implementation will be used.
+	// The objects ParseResponse method will be called to parse the response and return the token.
 	//
-	// required: true
+	// required: false
 	// default: defaultIdentityProviderResponseParser
-	IdentityProviderResponseParser IdentityProviderResponseParserFunc
+	IdentityProviderResponseParser IdentityProviderResponseParser
 	// RetryOptions is a struct that contains the options for retrying the token request.
 	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
 	//
@@ -79,9 +81,12 @@ type TokenManager interface {
 	// Close closes the token manager and releases any resources.
 	Close() error
 }
+type defaultIdentityProviderResponseParser struct{}
 
-// defaultIdentityProviderResponseParser is a function that parses the token and returns the username and password.
-var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = func(response IdentityProviderResponse) (*Token, error) {
+// ParseResponse parses the response from the identity provider and extracts the token.
+// It takes an IdentityProviderResponse as an argument and returns a Token and an error if any.
+// The IdentityProviderResponse contains the raw token and the expiration time.
+func (*defaultIdentityProviderResponseParser) ParseResponse(response IdentityProviderResponse) (*Token, error) {
 	var username, password, rawToken string
 	var expiresOn time.Time
 	if response == nil {
@@ -155,6 +160,9 @@ var defaultIdentityProviderResponseParser IdentityProviderResponseParserFunc = f
 	), nil
 }
 
+// entraidIdentityProviderResponseParser is the default implementation of the IdentityProviderResponseParser interface.
+var entraidIdentityProviderResponseParser IdentityProviderResponseParser = &defaultIdentityProviderResponseParser{}
+
 // NewTokenManager creates a new TokenManager.
 // It takes an IdentityProvider and TokenManagerOptions as arguments and returns a TokenManager interface.
 // The IdentityProvider is used to obtain the token, and the TokenManagerOptions contains options for the TokenManager.
@@ -189,10 +197,9 @@ type entraidTokenManager struct {
 	// token is the authentication token for the user which should be kept in memory if valid.
 	token *Token
 
-	// identityProviderResponseParser is a function that parses the IdentityProviderResponse.
-	// it can be supplied by the user to parse the token and return the populated Token object or
-	// the default implementation will be used.
-	identityProviderResponseParser IdentityProviderResponseParserFunc
+	// identityProviderResponseParser is the parser used to parse the response from the identity provider.
+	// It`s ParseResponse method will be called to parse the response and return the token.
+	identityProviderResponseParser IdentityProviderResponseParser
 
 	// retryOptions is a struct that contains the options for retrying the token request.
 	// It contains the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
@@ -242,7 +249,7 @@ func (e *entraidTokenManager) GetToken() (*Token, error) {
 		return nil, fmt.Errorf("failed to request token from idp: %w", err)
 	}
 
-	token, err := e.identityProviderResponseParser(idpResult)
+	token, err := e.identityProviderResponseParser.ParseResponse(idpResult)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
@@ -420,9 +427,9 @@ func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
 // defaultIdentityProviderResponseParserOr returns the default token parser if the provided token parser is not set.
 // It sets the default token parser to the defaultIdentityProviderResponseParser function.
 // The default token parser is used to parse the raw token and return a Token object.
-func defaultIdentityProviderResponseParserOr(idpResponseParser IdentityProviderResponseParserFunc) IdentityProviderResponseParserFunc {
+func defaultIdentityProviderResponseParserOr(idpResponseParser IdentityProviderResponseParser) IdentityProviderResponseParser {
 	if idpResponseParser == nil {
-		return defaultIdentityProviderResponseParser
+		return &defaultIdentityProviderResponseParser{}
 	}
 	return idpResponseParser
 }
