@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 var assertFuncNameMatches = func(t *testing.T, func1, func2 interface{}) {
@@ -535,6 +536,34 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		token, err := tokenManager.GetToken()
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
-	})
 
+	})
+	t.Run("GetToken with parse error", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{
+				IdentityProviderResponseParser: mParser,
+			},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		assert.NoError(t, err)
+
+		idp.On("RequestToken").Return(rawResponse, nil)
+		mParser.On("ParseResponse", rawResponse).Return(nil, fmt.Errorf("parse error"))
+		listener.On("OnTokenError", mock.Anything).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.Error(t, err)
+		assert.Nil(t, cancel)
+		assert.NotNil(t, tm.listener)
+
+	})
 }
