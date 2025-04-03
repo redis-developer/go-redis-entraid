@@ -1,0 +1,129 @@
+package entraid
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestAuthorityConfiguration(t *testing.T) {
+	tests := []struct {
+		name          string
+		authorityType string
+		tenantID      string
+		authority     string
+		expected      string
+		expectError   bool
+	}{
+		{
+			name:          "Default Authority",
+			authorityType: AuthorityTypeDefault,
+			expected:      "https://login.microsoftonline.com/common",
+			expectError:   false,
+		},
+		{
+			name:          "Multi-Tenant Authority",
+			authorityType: AuthorityTypeMultiTenant,
+			tenantID:      "12345",
+			expected:      "https://login.microsoftonline.com/12345",
+			expectError:   false,
+		},
+		{
+			name:          "Custom Authority",
+			authorityType: AuthorityTypeCustom,
+			authority:     "https://custom-authority.com",
+			expected:      "https://custom-authority.com",
+			expectError:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ac := AuthorityConfiguration{
+				AuthorityType: test.authorityType,
+				TenantID:      test.tenantID,
+				Authority:     test.authority,
+			}
+			result, err := ac.getAuthority()
+			if test.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expected, result)
+			}
+		})
+	}
+}
+
+func TestAuthorityConfigurationDefault(t *testing.T) {
+	ac := AuthorityConfiguration{}
+	result, err := ac.getAuthority()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://login.microsoftonline.com/common", result)
+}
+
+func TestAuthorityConfigurationMultiTenant(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: AuthorityTypeMultiTenant,
+		TenantID:      "12345",
+	}
+	result, err := ac.getAuthority()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://login.microsoftonline.com/12345", result)
+}
+
+func TestAuthorityConfigurationCustom(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: AuthorityTypeCustom,
+		Authority:     "https://custom-authority.com",
+	}
+	result, err := ac.getAuthority()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://custom-authority.com", result)
+}
+
+func TestAuthorityConfigurationInvalid(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: "invalid",
+	}
+	result, err := ac.getAuthority()
+	assert.Error(t, err)
+	assert.Equal(t, "", result)
+}
+
+func TestAuthorityConfigurationMissingTenantID(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: AuthorityTypeMultiTenant,
+	}
+	result, err := ac.getAuthority()
+	assert.Error(t, err)
+	assert.Equal(t, "", result)
+}
+
+func TestAuthorityConfigurationMissingAuthority(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: AuthorityTypeCustom,
+	}
+	result, err := ac.getAuthority()
+	assert.Error(t, err)
+	assert.Equal(t, "", result)
+}
+
+func TestAuthorityConfigurationDefaultAuthorityType(t *testing.T) {
+	ac := AuthorityConfiguration{
+		TenantID: "12345",
+	}
+	result, err := ac.getAuthority()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://login.microsoftonline.com/common", result)
+}
+
+func TestAuthorityConfigurationDefaultAuthorityTypeWithTenantID(t *testing.T) {
+	ac := AuthorityConfiguration{
+		AuthorityType: AuthorityTypeDefault,
+		TenantID:      "12345",
+	}
+	result, err := ac.getAuthority()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://login.microsoftonline.com/common", result)
+}

@@ -20,6 +20,11 @@ jobs:
       run: go mod tidy
     - name: Run tests with coverage
       run: go test ./... -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage.txt
+        token: ${{ secrets.CODECOV_TOKEN }}
     - name: Check coverage
       uses: vladopajic/go-test-coverage@v2
       with:
