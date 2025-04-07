@@ -60,6 +60,9 @@ func NewToken(username, password, rawToken string, expiresOn, receivedAt time.Ti
 
 // copyToken creates a copy of the token.
 func copyToken(token *Token) *Token {
+	if token == nil {
+		return nil
+	}
 	return NewToken(token.username, token.password, token.rawToken, token.expiresOn, token.receivedAt, token.ttl)
 }
 

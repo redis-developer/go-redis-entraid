@@ -23,7 +23,7 @@ type TokenManagerOptions struct {
 	// default: 0.7
 	ExpirationRefreshRatio float64
 	// LowerRefreshBoundMs is the lower bound for the refresh time in milliseconds.
-	// Represents the minimum time in milliseconds before token expiration to trigger a refresh, in milliseconds.
+	// Represents the minimum time in milliseconds before token expiration to trigger a refresh.
 	// This value sets a fixed lower bound for when a token refresh should occur, regardless
 	// of the token's total lifetime.
 	//
@@ -239,7 +239,8 @@ type entraidTokenManager struct {
 }
 
 func (e *entraidTokenManager) GetToken() (*Token, error) {
-	if e.token != nil && e.token.expiresOn.Before(time.Now().Add(e.lowerBoundDuration)) {
+	// check if the token is nil and if it is not expired
+	if e.token != nil && e.token.expiresOn.After(time.Now()) && e.durationToRenewal() > e.lowerBoundDuration {
 		// copy the token so the caller can't modify it
 		return copyToken(e.token), nil
 	}
@@ -256,6 +257,10 @@ func (e *entraidTokenManager) GetToken() (*Token, error) {
 
 	// copy the token so the caller can't modify it
 	e.token = copyToken(token)
+
+	if e.token == nil {
+		return nil, fmt.Errorf("failed to get token: token is nil")
+	}
 	return token, nil
 }
 
@@ -276,12 +281,25 @@ func (e *entraidTokenManager) durationToRenewal() time.Duration {
 	if e.token == nil {
 		return 0
 	}
-	// Calculate the time to renew the token based on the expiration refresh ratio
-	duration := time.Duration(float64(time.Until(e.token.expiresOn)) * e.expirationRefreshRatio)
-	if duration < e.lowerBoundDuration {
-		return e.lowerBoundDuration
+	timeTillExpiration := time.Until(e.token.expiresOn)
+
+	// if lower bound has passed, do it NOW
+	if timeTillExpiration <= e.lowerBoundDuration {
+		return 0
 	}
 
+	// Calculate the time to renew the token based on the expiration refresh ratio
+	duration := time.Duration(float64(timeTillExpiration) * e.expirationRefreshRatio)
+	if duration <= 0 {
+		return 0
+	}
+
+	// if the duration will take us past the lower bound, return the duration to lower bound
+	if timeTillExpiration-e.lowerBoundDuration < duration {
+		return timeTillExpiration - e.lowerBoundDuration
+	}
+
+	// return the calculated duration
 	return duration
 }
 
@@ -309,13 +327,19 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	go func(listener TokenListener) {
 		// Simulate token refresh
 		for {
+			timeToRenewal := e.durationToRenewal()
 			select {
 			case <-e.closed:
 				// Token manager is closed, stop the loop
 				return
-			case <-time.After(e.durationToRenewal()):
+			case <-time.After(timeToRenewal):
 				// Token is about to expire, refresh it
 				delay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
+				// Token asked to be refreshed asap, but let's make sure we wait a bit
+				if timeToRenewal == 0 {
+					time.Sleep(delay)
+				}
+
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
 					select {
 					case <-e.closed:

@@ -82,6 +82,9 @@ type mockIdentityProvider struct {
 
 func (m *mockIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
 	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(IdentityProviderResponse), args.Error(1)
 }
 
