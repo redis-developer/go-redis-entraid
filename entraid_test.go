@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// testJWT token is a JWT token for testing
+// testJWTToken is a JWT token for testing
 //
 //	{
 //	 "iss": "test jwt",
@@ -21,7 +21,36 @@ import (
 //	 "sub": "test@test.com",
 //	 "oid": "test"
 //	}
+//
+// key: qwertyuiopasdfghjklzxcvbnm123456
 const testJWTtoken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0MzUxNTAxMSwiZXhwIjoxNzc1MDUxMDExLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.6RG721V2eFlSLsCRmo53kSRRrTZIe1UPdLZCUEvIarU"
+
+// testJWTExpiredToken is an expired JWT token for testing
+//
+// {
+// "iss": "test jwt",
+// "iat": 1617795148,
+// "exp": 1617795148,
+// "aud": "www.example.com",
+// "sub": "test@test.com",
+// "oid": "test"
+// }
+//
+// key: qwertyuiopasdfghjklzxcvbnm123456
+const testJWTExpiredToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTYxNzc5NTE0OCwiZXhwIjoxNjE3Nzk1MTQ4LCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.IbGPhHRiPYcpUDrhAPf4h3gH1XXBOu560NYT59rUMzc"
+
+// testJWTWithZeroExpiryToken is a JWT token with zero expiry for testing
+//
+// {
+// "iss": "test jwt",
+// "iat": 1744025944,
+// "exp": null,
+// "aud": "www.example.com",
+// "sub": "test@test.com",
+// "oid": "test"
+// }
+// key: qwertyuiopasdfghjklzxcvbnm123456
+const testJWTWithZeroExpiryToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0NDAyNTk0NCwiZXhwIjpudWxsLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.bLSANIzawE5Y6rgspvvUaRhkBq6Y4E0ggjXlmHRn8ew"
 
 var testTokenValid = NewToken(
 	"test",

@@ -423,6 +423,22 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.NotNil(t, token)
 	})
 
+	t.Run("Default IdentityProviderResponseParser with expired JWT Token", func(t *testing.T) {
+		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTExpiredToken)
+		assert.NoError(t, err)
+		token, err := parser.ParseResponse(idpResponse)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
+
+	t.Run("Default IdentityProviderResponseParser with zero expiry JWT Token", func(t *testing.T) {
+		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTWithZeroExpiryToken)
+		assert.NoError(t, err)
+		token, err := parser.ParseResponse(idpResponse)
+		assert.Error(t, err)
+		assert.Nil(t, token)
+	})
+
 	t.Run("NewIDPResponse with type Unknown", func(t *testing.T) {
 		idpResponse, err := NewIDPResponse("Unknown", testJWTtoken)
 		assert.Error(t, err)
@@ -565,5 +581,44 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.Nil(t, cancel)
 		assert.NotNil(t, tm.listener)
 
+	})
+}
+
+func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
+	// Test the durationToRenewal function
+	t.Parallel()
+	t.Run("durationToRenewal", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		tokenManager, err := NewTokenManager(idp, TokenManagerOptions{
+			LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
+
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+
+		result := tm.durationToRenewal()
+		// returns 0 for nil token
+		assert.Equal(t, time.Duration(0), result)
+
+		// get token that expires before the lower bound
+		assert.NotPanics(t, func() {
+			expiresSoon := &public.AuthResult{
+				ExpiresOn: time.Now().Add(time.Duration(tm.lowerBoundDuration) - time.Minute).UTC(),
+			}
+			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+				expiresSoon)
+			assert.NoError(t, err)
+			idp.On("RequestToken").Return(idpResponse, nil)
+
+			_, err = tm.GetToken()
+			assert.NoError(t, err)
+			assert.NotNil(t, tm.token)
+		})
+
+		// return the lower bound
+		result = tm.durationToRenewal()
+		assert.Equal(t, tm.lowerBoundDuration, result)
 	})
 }

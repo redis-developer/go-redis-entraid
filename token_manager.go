@@ -127,7 +127,7 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response IdentityPro
 		username = claims.Oid
 		password = rawToken
 
-		if expiresOn.IsZero() {
+		if expiresOn.IsZero() && claims.ExpiresAt != nil {
 			expiresOn = claims.ExpiresAt.Time
 		}
 
@@ -146,7 +146,7 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response IdentityPro
 	}
 
 	if time.Until(expiresOn) < MinTokenTTL {
-		return nil, fmt.Errorf("expires on is less than minimum token TTL which is %d", MinTokenTTL)
+		return nil, fmt.Errorf("expires on is less than minimum token TTL which is %s", MinTokenTTL)
 	}
 	// parse token as jwt token and get claims
 
