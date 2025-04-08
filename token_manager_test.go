@@ -714,7 +714,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 
 			// return time to lower bound, if the returned time will be after the lower bound
 			result = tm.durationToRenewal()
-			assert.InDelta(t, time.Until(tm.token.expiresOn.Add(-1*tm.lowerBoundDuration)), result, float64(time.Second))
+			assert.InEpsilon(t, time.Until(tm.token.expiresOn.Add(-1*tm.lowerBoundDuration)), result, float64(time.Second))
 		})
 
 	})
@@ -997,11 +997,21 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 
-	t.Run("Start and Listen with retriable error - max retries", func(t *testing.T) {
+	t.Run("Start and Listen with retriable error - max retries and max delay", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
+		maxAttempts := 3
+		maxDelayMs := 500
+		initialDelayMs := 100
 		tokenManager, err := NewTokenManager(idp,
-			TokenManagerOptions{},
+			TokenManagerOptions{
+				RetryOptions: RetryOptions{
+					MaxAttempts:       maxAttempts,
+					MaxDelayMs:        maxDelayMs,
+					InitialDelayMs:    initialDelayMs,
+					BackoffMultiplier: 10,
+				},
+			},
 		)
 		assert.NoError(t, err)
 		assert.NotNil(t, tokenManager)
@@ -1028,11 +1038,19 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 			response := idpResponse.(*authResult)
 			response.authResult = res
 		}).Return(idpResponse, nil)
+		var start, end time.Time
+		var elapsed time.Duration
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		_ = listener.
+			On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).
+			Run(func(_ mock.Arguments) {
+				start = time.Now()
+			}).Return()
 		maxAttemptsReached := make(chan struct{})
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0).(error)
+			end = time.Now()
+			elapsed = end.Sub(start)
 			assert.NotNil(t, err)
 			assert.ErrorContains(t, err, "max attempts reached")
 			close(maxAttemptsReached)
@@ -1042,29 +1060,34 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotNil(t, cancel)
 		assert.NoError(t, err)
 		assert.NotNil(t, tm.listener)
-
-		noErrCall.Unset()
-		returnErr := newMockError(true)
-		idp.On("RequestToken").Return(nil, returnErr)
-
 		toRenewal := tm.durationToRenewal()
 		assert.NotEqual(t, time.Duration(0), toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
 
+		noErrCall.Unset()
+		returnErr := newMockError(true)
+
+		idp.On("RequestToken").Return(nil, returnErr)
+
 		select {
-		case <-time.After(toRenewal + time.Duration(tm.retryOptions.MaxAttempts*tm.retryOptions.MaxDelayMs)*time.Millisecond):
-			assert.Fail(t, "Timeout - max retries not reached ")
+		case <-time.After(toRenewal + time.Duration(maxAttempts*maxDelayMs)*time.Millisecond):
+			assert.Fail(t, "Timeout - max retries not reached")
 		case <-maxAttemptsReached:
 		}
 
-		// maxAttempts + the initial one
+		// initialRenewal window, maxAttempts - 1 * max delay + the initial one which was lower than max delay
+		allDelaysShouldBe := toRenewal
+		allDelaysShouldBe += time.Duration(initialDelayMs) * time.Millisecond
+		allDelaysShouldBe += time.Duration(maxAttempts-1) * time.Duration(maxDelayMs) * time.Millisecond
+
+		assert.InEpsilon(t, elapsed, allDelaysShouldBe, float64(10*time.Millisecond))
+
 		idp.AssertNumberOfCalls(t, "RequestToken", tm.retryOptions.MaxAttempts+1)
 		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)
 		listener.AssertNumberOfCalls(t, "OnTokenError", 1)
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
-
 	t.Run("Start and Listen and close during retries", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
@@ -1124,7 +1147,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
 
-		<-time.After(toRenewal + 50*time.Millisecond)
+		<-time.After(toRenewal + 500*time.Millisecond)
 		assert.Nil(t, cancel())
 
 		select {

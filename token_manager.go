@@ -321,6 +321,8 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	go listener.OnTokenNext(token)
 
 	go func(listener TokenListener) {
+		maxDelay := time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
+		initialDelay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
 		// Simulate token refresh
 		for {
 			timeToRenewal := e.durationToRenewal()
@@ -330,22 +332,20 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 				// TODO(ndyakov): Discuss if we should call OnTokenError here
 				return
 			case <-time.After(timeToRenewal):
-				// Token is about to expire, refresh it
-				delay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
-				// Token asked to be refreshed asap, but let's make sure we wait a bit
 				if timeToRenewal == 0 {
-					time.Sleep(delay)
-				}
-
-				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
+					// Token was requested immediately, guard against infinite loop
 					select {
 					case <-e.closed:
 						// Token manager is closed, stop the loop
 						// TODO(ndyakov): Discuss if we should call OnTokenError here
 						return
-					default:
-						// continue to next attempt
+					case <-time.After(initialDelay):
+						// continue to attempt
 					}
+				}
+				// Token is about to expire, refresh it
+				delay := initialDelay
+				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
 					token, err := e.GetToken(true)
 					if err == nil {
 						listener.OnTokenNext(token)
@@ -361,16 +361,22 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 							return
 						}
 
-						if delay < time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
+						if delay < maxDelay {
 							delay = time.Duration(float64(delay) * e.retryOptions.BackoffMultiplier)
 						}
 
-						time.Sleep(delay)
-
-						if delay > time.Duration(e.retryOptions.MaxDelayMs)*time.Millisecond {
-							delay = time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
+						if delay > maxDelay {
+							delay = maxDelay
 						}
-						continue
+
+						select {
+						case <-e.closed:
+							// Token manager is closed, stop the loop
+							// TODO(ndyakov): Discuss if we should call OnTokenError here
+							return
+						case <-time.After(delay):
+							// continue to next attempt
+						}
 					} else {
 						// not retriable
 						listener.OnTokenError(err)
