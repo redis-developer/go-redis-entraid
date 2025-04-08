@@ -765,7 +765,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotNil(t, tm.listener)
 
 		toRenewal := tm.durationToRenewal()
-		assert.NotEqual(t, 0, toRenewal)
+		assert.NotEqual(t, time.Duration(0), toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
 		<-time.After(toRenewal / 10)
@@ -780,6 +780,58 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.Error(t, tokenManager.Close())
 		mock.AssertExpectationsForObjects(t, idp, mParser, listener)
 	})
+
+	t.Run("Start and Listen with 0 renewal duration", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{
+				LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
+			},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+		idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		toRenewal := tm.durationToRenewal()
+		assert.Equal(t, time.Duration(0), toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+
+		<-time.After(time.Duration(tm.retryOptions.InitialDelayMs+100) * time.Millisecond)
+
+		idp.AssertNumberOfCalls(t, "RequestToken", 2)
+		listener.AssertNumberOfCalls(t, "OnTokenNext", 2)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
 	t.Run("Start and Listen", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
@@ -819,7 +871,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotNil(t, tm.listener)
 
 		toRenewal := tm.durationToRenewal()
-		assert.NotEqual(t, 0, toRenewal)
+		assert.NotEqual(t, time.Duration(0), toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
 
@@ -828,7 +880,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 
-	t.Run("Start and Listen with retryable error", func(t *testing.T) {
+	t.Run("Start and Listen with retriable error", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		tokenManager, err := NewTokenManager(idp,
@@ -850,28 +902,78 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
-		var returnErr error
-		var secondResponse bool
 
-		idp.On("RequestToken").Run(func(args mock.Arguments) {
-			if secondResponse {
-				returnErr = mockError{isTimeout: true}
-				return
-			}
+		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
 			res := &public.AuthResult{
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
 			response.authResult = res
-			secondResponse = true
-		}).Return(idpResponse, returnErr)
+		}).Return(idpResponse, nil)
 
 		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0)
 			assert.NotNil(t, err)
 			log.Printf("Found TOKEN Error: %v", err)
+		}).Return().Maybe()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		noErrCall.Unset()
+		returnErr := newMockError(true)
+		idp.On("RequestToken").Return(nil, returnErr)
+
+		toRenewal := tm.durationToRenewal()
+		assert.NotEqual(t, time.Duration(0), toRenewal)
+		assert.NotEqual(t, expiresIn, toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+		<-time.After(toRenewal + 100*time.Millisecond)
+		idp.AssertNumberOfCalls(t, "RequestToken", 2)
+		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
+	t.Run("Start and Listen with NOT retriable error", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+
+		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
+			err := args.Get(0).(error)
+			assert.NotNil(t, err)
 		}).Return()
 
 		cancel, err := tokenManager.Start(listener)
@@ -879,13 +981,163 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, tm.listener)
 
+		noErrCall.Unset()
+		returnErr := newMockError(false)
+		idp.On("RequestToken").Return(nil, returnErr)
+
 		toRenewal := tm.durationToRenewal()
-		assert.NotEqual(t, 0, toRenewal)
+		assert.NotEqual(t, time.Duration(0), toRenewal)
+		assert.NotEqual(t, expiresIn, toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+		<-time.After(toRenewal + 5*time.Millisecond)
+
+		idp.AssertNumberOfCalls(t, "RequestToken", 2)
+		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)
+		listener.AssertNumberOfCalls(t, "OnTokenError", 1)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
+	t.Run("Start and Listen with retriable error - max retries", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+
+		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		maxAttemptsReached := make(chan struct{})
+		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
+			err := args.Get(0).(error)
+			assert.NotNil(t, err)
+			assert.ErrorContains(t, err, "max attempts reached")
+			close(maxAttemptsReached)
+		}).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		noErrCall.Unset()
+		returnErr := newMockError(true)
+		idp.On("RequestToken").Return(nil, returnErr)
+
+		toRenewal := tm.durationToRenewal()
+		assert.NotEqual(t, time.Duration(0), toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
 
-		<-time.After(toRenewal + time.Second)
+		select {
+		case <-time.After(toRenewal + time.Duration(tm.retryOptions.MaxAttempts*tm.retryOptions.MaxDelayMs)*time.Millisecond):
+			assert.Fail(t, "Timeout - max retries not reached ")
+		case <-maxAttemptsReached:
+		}
 
+		// maxAttempts + the initial one
+		idp.AssertNumberOfCalls(t, "RequestToken", tm.retryOptions.MaxAttempts+1)
+		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)
+		listener.AssertNumberOfCalls(t, "OnTokenError", 1)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
+	t.Run("Start and Listen and close during retries", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{
+				RetryOptions: RetryOptions{
+					MaxAttempts: 100,
+				},
+			},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+
+		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		maxAttemptsReached := make(chan struct{})
+		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
+			err := args.Get(0).(error)
+			assert.NotNil(t, err)
+			assert.ErrorContains(t, err, "max attempts reached")
+			close(maxAttemptsReached)
+		}).Return().Maybe()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		noErrCall.Unset()
+		returnErr := newMockError(true)
+		idp.On("RequestToken").Return(nil, returnErr)
+
+		toRenewal := tm.durationToRenewal()
+		assert.NotEqual(t, time.Duration(0), toRenewal)
+		assert.NotEqual(t, expiresIn, toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+
+		<-time.After(toRenewal + 50*time.Millisecond)
+		assert.Nil(t, cancel())
+
+		select {
+		case <-maxAttemptsReached:
+			assert.Fail(t, "Max retries reached, token manager not closed")
+		case <-tm.closed:
+		}
+
+		<-time.After(50 * time.Millisecond)
+
+		// maxAttempts + the initial one
+		idp.AssertNumberOfCalls(t, "RequestToken", 2)
+		listener.AssertNumberOfCalls(t, "OnTokenError", 0)
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 }

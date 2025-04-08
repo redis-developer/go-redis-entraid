@@ -47,7 +47,7 @@ type TokenManagerOptions struct {
 
 // RetryOptions is a struct that contains the options for retrying the token request.
 type RetryOptions struct {
-	// IsRetryable is a function that checks if the error is retryable.
+	// IsRetryable is a function that checks if the error is retriable.
 	// It takes an error as an argument and returns a boolean value.
 	//
 	// default: defaultRetryableFunc
@@ -327,6 +327,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 			select {
 			case <-e.closed:
 				// Token manager is closed, stop the loop
+				// TODO(ndyakov): Discuss if we should call OnTokenError here
 				return
 			case <-time.After(timeToRenewal):
 				// Token is about to expire, refresh it
@@ -340,6 +341,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 					select {
 					case <-e.closed:
 						// Token manager is closed, stop the loop
+						// TODO(ndyakov): Discuss if we should call OnTokenError here
 						return
 					default:
 						// continue to next attempt
@@ -349,13 +351,13 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 						listener.OnTokenNext(token)
 						break
 					}
-					// check if err is retryable
+					// check if err is retriable
 					if e.retryOptions.IsRetryable(err) {
-						// retryable error, continue to next attempt
+						// retriable error, continue to next attempt
 						// Exponential backoff
 						if i == e.retryOptions.MaxAttempts-1 {
 							// last attempt, call OnTokenError
-							listener.OnTokenError(err)
+							listener.OnTokenError(fmt.Errorf("max attempts reached: %w", err))
 							return
 						}
 
@@ -370,7 +372,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 						}
 						continue
 					} else {
-						// not retryable
+						// not retriable
 						listener.OnTokenError(err)
 						return
 					}
@@ -403,10 +405,10 @@ func (e *entraidTokenManager) Close() (err error) {
 	return
 }
 
-// defaultRetryableFunc is a function that checks if the error is retryable.
+// defaultRetryableFunc is a function that checks if the error is retriable.
 // It takes an error as an argument and returns a boolean value.
 // The function checks if the error is a net.Error and if it is a timeout or temporary error.
-var defaultIsRetryable func(err error) bool = func(err error) bool {
+var defaultIsRetryable = func(err error) bool {
 	var netErr net.Error
 	if err == nil {
 		return true

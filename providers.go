@@ -8,7 +8,7 @@ import (
 
 // CredentialsProviderOptions is a struct that holds the options for the credentials provider.
 // It is used to configure the credentials provider when requesting a token.
-// It is used to specify the client ID, TokenManagerOptions, and callback functions for re-authentication and retryable errors.
+// It is used to specify the client ID, TokenManagerOptions, and callback functions for re-authentication and retriable errors.
 type CredentialsProviderOptions struct {
 	// ClientID is the client ID of the identity.
 	// This is used to identify the identity when requesting a token.
@@ -21,7 +21,7 @@ type CredentialsProviderOptions struct {
 	// OnReAuthenticationError is a callback function that is called when a re-authentication error occurs.
 	OnReAuthenticationError func(error) error
 
-	// OnRetryableError is a callback function that is called when a retryable error occurs.
+	// OnRetryableError is a callback function that is called when a retriable error occurs.
 	OnRetryableError func(error) error
 }
 

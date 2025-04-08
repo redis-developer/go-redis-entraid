@@ -3,6 +3,7 @@ package entraid
 import (
 	"context"
 	"net"
+	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -91,11 +92,31 @@ func (m *mockIdentityProvider) RequestToken() (IdentityProviderResponse, error) 
 // Ensure mockIdentityProvider implements the IdentityProvider interface
 var _ IdentityProvider = (*mockIdentityProvider)(nil)
 
+func newMockError(retriable bool) error {
+	if retriable {
+		return &mockError{
+			isTimeout:   true,
+			isTemporary: true,
+			error:       os.ErrDeadlineExceeded,
+		}
+	} else {
+		return &mockError{
+			isTimeout:   false,
+			isTemporary: false,
+			error:       os.ErrInvalid,
+		}
+	}
+}
+
 type mockError struct {
 	// Mock implementation of the network error
 	error
 	isTimeout   bool
 	isTemporary bool
+}
+
+func (m *mockError) Error() string {
+	return "this is mock error"
 }
 
 func (m *mockError) Timeout() bool {
