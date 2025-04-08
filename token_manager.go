@@ -3,7 +3,6 @@ package entraid
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -391,12 +390,6 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 }
 
 func (e *entraidTokenManager) Close() (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered from panic: %v", r)
-			err = ErrTokenManagerAlreadyCanceled
-		}
-	}()
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
