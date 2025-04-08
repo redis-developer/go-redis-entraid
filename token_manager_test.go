@@ -832,6 +832,66 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 
+	t.Run("Start and Listen with 0 renewal duration and closing the manager", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{
+				LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
+				RetryOptions: RetryOptions{
+					InitialDelayMs: 5000, // 5 seconds
+				},
+			},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+		idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		toRenewal := tm.durationToRenewal()
+		assert.Equal(t, time.Duration(0), toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+
+		<-time.After(time.Duration(tm.retryOptions.InitialDelayMs/2) * time.Millisecond)
+		assert.NoError(t, cancel())
+		assert.Nil(t, tm.listener)
+		assert.Panics(t, func() {
+			close(tm.closed)
+		})
+
+		// called only once since the token manager was closed prior to initial delay passing
+		idp.AssertNumberOfCalls(t, "RequestToken", 1)
+		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
 	t.Run("Start and Listen", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
