@@ -496,17 +496,6 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
-	t.Run("Default IdentityProviderResponseParser with token that will expire soon", func(t *testing.T) {
-		authResult := &public.AuthResult{
-			ExpiresOn: time.Now().Add(MinTokenTTL).Add(-time.Minute).UTC(),
-		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
-			authResult)
-		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
-		assert.Error(t, err)
-		assert.Nil(t, token)
-	})
 	t.Run("Default IdentityProviderResponseParser with token that expired", func(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
@@ -731,9 +720,8 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 }
 
 func TestEntraidTokenManager_Streaming(t *testing.T) {
-	// write a test that will cover the goroutine in the Start
 	t.Parallel()
-	t.Run("Streaming", func(t *testing.T) {
+	t.Run("Start and Close", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
@@ -748,7 +736,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		expiresIn := 10 * time.Millisecond
+		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
 		authResult := &public.AuthResult{
 			ExpiresOn: expiresOn,
@@ -757,7 +745,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 			authResult)
 		assert.NoError(t, err)
 
-		idp.On("RequestToken").Return(idpResponse, nil)
+		idp.On("RequestToken").Return(idpResponse, nil).Once()
 		token := NewToken(
 			"test",
 			"test",
@@ -767,8 +755,8 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 			int64(time.Until(expiresOn)),
 		)
 
-		mParser.On("ParseResponse", idpResponse).Return(token, nil)
-		listener.On("OnTokenNext", token).Return()
+		mParser.On("ParseResponse", idpResponse).Return(token, nil).Once()
+		listener.On("OnTokenNext", token).Return().Once()
 
 		cancel, err := tokenManager.Start(listener)
 		assert.NotNil(t, cancel)
@@ -779,6 +767,60 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotEqual(t, 0, toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
-		// should fail on mocks
+		<-time.After(toRenewal / 10)
+		assert.NotNil(t, tm.listener)
+		assert.NoError(t, tokenManager.Close())
+		assert.Nil(t, tm.listener)
+		<-time.After(toRenewal)
+		assert.Error(t, tokenManager.Close())
+		mock.AssertExpectationsForObjects(t, idp, mParser, listener)
+	})
+	t.Run("Start and Listen", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		mParser := &mockIdentityProviderResponseParser{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+		idp.On("RequestToken").Run(func(args mock.Arguments) {
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+		}).Return(idpResponse, nil)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		toRenewal := tm.durationToRenewal()
+		assert.NotEqual(t, 0, toRenewal)
+		assert.NotEqual(t, expiresIn, toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+
+		<-time.After(toRenewal + time.Second)
+
+		mock.AssertExpectationsForObjects(t, idp, mParser, listener)
 	})
 }

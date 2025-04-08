@@ -145,11 +145,7 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response IdentityPro
 		return nil, fmt.Errorf("expires on is in the past")
 	}
 
-	if time.Until(expiresOn) < MinTokenTTL {
-		return nil, fmt.Errorf("expires on is less than minimum token TTL which is %s", MinTokenTTL)
-	}
 	// parse token as jwt token and get claims
-
 	return NewToken(
 		username,
 		password,
@@ -283,16 +279,15 @@ func (e *entraidTokenManager) durationToRenewal() time.Duration {
 	}
 	timeTillExpiration := time.Until(e.token.expiresOn)
 
-	// if lower bound has passed, do it NOW
-	if timeTillExpiration <= e.lowerBoundDuration {
+	// if the timeTillExpiration is less than the lower bound (or 0), return 0 to renew the token NOW
+	if timeTillExpiration <= e.lowerBoundDuration || timeTillExpiration <= 0 {
 		return 0
 	}
 
 	// Calculate the time to renew the token based on the expiration refresh ratio
+	// Since timeTillExpiration is guarded by the lower bound, we can safely multiply it by the ratio
+	// and assume the duration is a positive number
 	duration := time.Duration(float64(timeTillExpiration) * e.expirationRefreshRatio)
-	if duration <= 0 {
-		return 0
-	}
 
 	// if the duration will take us past the lower bound, return the duration to lower bound
 	if timeTillExpiration-e.lowerBoundDuration < duration {
