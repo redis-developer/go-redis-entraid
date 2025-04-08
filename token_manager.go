@@ -75,7 +75,8 @@ type RetryOptions struct {
 // It is typically used in conjunction with an IdentityProvider to obtain the token.
 type TokenManager interface {
 	// GetToken returns the token for authentication.
-	GetToken() (*Token, error)
+	// It takes a boolean value forceRefresh as an argument.
+	GetToken(forceRefresh bool) (*Token, error)
 	// Start starts the token manager and returns a channel that will receive updates.
 	Start(listener TokenListener) (cancelFunc, error)
 	// Close closes the token manager and releases any resources.
@@ -234,9 +235,9 @@ type entraidTokenManager struct {
 	closed chan struct{}
 }
 
-func (e *entraidTokenManager) GetToken() (*Token, error) {
+func (e *entraidTokenManager) GetToken(forceRefresh bool) (*Token, error) {
 	// check if the token is nil and if it is not expired
-	if e.token != nil && e.token.expiresOn.After(time.Now()) && e.durationToRenewal() > e.lowerBoundDuration {
+	if !forceRefresh && e.token != nil && time.Now().Add(e.lowerBoundDuration).Before(e.token.expiresOn) {
 		// copy the token so the caller can't modify it
 		return copyToken(e.token), nil
 	}
@@ -311,7 +312,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 	e.listener = listener
 	e.closed = make(chan struct{})
 
-	token, err := e.GetToken()
+	token, err := e.GetToken(true)
 	if err != nil {
 		go listener.OnTokenError(err)
 		return nil, fmt.Errorf("failed to start token manager: %w", err)
@@ -343,7 +344,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (cancelFunc, error) 
 					default:
 						// continue to next attempt
 					}
-					token, err := e.GetToken()
+					token, err := e.GetToken(true)
 					if err == nil {
 						listener.OnTokenNext(token)
 						break

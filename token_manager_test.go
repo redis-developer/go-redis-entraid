@@ -2,6 +2,7 @@ package entraid
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"reflect"
@@ -538,7 +539,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, tm.listener)
 
-		token, err := tokenManager.GetToken()
+		token, err := tokenManager.GetToken(false)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 
@@ -591,7 +592,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 
 		idp.On("RequestToken").Return(idpResponse, nil)
 
-		token, err := tokenManager.GetToken()
+		token, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -611,7 +612,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 
 		idp.On("RequestToken").Return(rawResponse, nil)
 
-		token, err := tokenManager.GetToken()
+		token, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -634,7 +635,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		idp.On("RequestToken").Return(idpResponse, nil)
 		mParser.On("ParseResponse", idpResponse).Return(nil, nil)
 
-		token, err := tokenManager.GetToken()
+		token, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -654,7 +655,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 
 		idp.On("RequestToken").Return(nil, fmt.Errorf("idp error"))
 
-		token, err := tokenManager.GetToken()
+		token, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
 		assert.Nil(t, token)
 	})
@@ -687,7 +688,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 			assert.NoError(t, err)
 			idp.On("RequestToken").Return(idpResponse, nil).Once()
 			tm.token = nil
-			_, err = tm.GetToken()
+			_, err = tm.GetToken(false)
 			assert.NoError(t, err)
 			assert.NotNil(t, tm.token)
 
@@ -707,7 +708,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 			assert.NoError(t, err)
 			idp.On("RequestToken").Return(idpResponse, nil).Once()
 			tm.token = nil
-			_, err = tm.GetToken()
+			_, err = tm.GetToken(false)
 			assert.NoError(t, err)
 			assert.NotNil(t, tm.token)
 
@@ -771,6 +772,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotNil(t, tm.listener)
 		assert.NoError(t, tokenManager.Close())
 		assert.Nil(t, tm.listener)
+		assert.Panics(t, func() {
+			close(tm.closed)
+		})
+
 		<-time.After(toRenewal)
 		assert.Error(t, tokenManager.Close())
 		mock.AssertExpectationsForObjects(t, idp, mParser, listener)
@@ -778,7 +783,6 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		mParser := &mockIdentityProviderResponseParser{}
 		tokenManager, err := NewTokenManager(idp,
 			TokenManagerOptions{},
 		)
@@ -821,6 +825,67 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		<-time.After(toRenewal + time.Second)
 
-		mock.AssertExpectationsForObjects(t, idp, mParser, listener)
+		mock.AssertExpectationsForObjects(t, idp, listener)
+	})
+
+	t.Run("Start and Listen with retryable error", func(t *testing.T) {
+		idp := &mockIdentityProvider{}
+		listener := &mockTokenListener{}
+		tokenManager, err := NewTokenManager(idp,
+			TokenManagerOptions{},
+		)
+		assert.NoError(t, err)
+		assert.NotNil(t, tokenManager)
+		tm, ok := tokenManager.(*entraidTokenManager)
+		assert.True(t, ok)
+		assert.Nil(t, tm.listener)
+
+		assert.NoError(t, err)
+
+		expiresIn := time.Second
+		expiresOn := time.Now().Add(expiresIn).UTC()
+		res := &public.AuthResult{
+			ExpiresOn: expiresOn,
+		}
+		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			res)
+		assert.NoError(t, err)
+		var returnErr error
+		var secondResponse bool
+
+		idp.On("RequestToken").Run(func(args mock.Arguments) {
+			if secondResponse {
+				returnErr = mockError{isTimeout: true}
+				return
+			}
+			expiresOn := time.Now().Add(expiresIn).UTC()
+			res := &public.AuthResult{
+				ExpiresOn: expiresOn,
+			}
+			response := idpResponse.(*authResult)
+			response.authResult = res
+			secondResponse = true
+		}).Return(idpResponse, returnErr)
+
+		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
+			err := args.Get(0)
+			assert.NotNil(t, err)
+			log.Printf("Found TOKEN Error: %v", err)
+		}).Return()
+
+		cancel, err := tokenManager.Start(listener)
+		assert.NotNil(t, cancel)
+		assert.NoError(t, err)
+		assert.NotNil(t, tm.listener)
+
+		toRenewal := tm.durationToRenewal()
+		assert.NotEqual(t, 0, toRenewal)
+		assert.NotEqual(t, expiresIn, toRenewal)
+		assert.True(t, expiresIn > toRenewal)
+
+		<-time.After(toRenewal + time.Second)
+
+		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 }

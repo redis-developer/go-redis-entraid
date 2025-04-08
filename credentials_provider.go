@@ -68,14 +68,14 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 	}
 	e.rwLock.Unlock()
 
-	token, err := e.tokenManager.GetToken()
+	token, err := e.tokenManager.GetToken(false)
 	if err != nil {
-		listener.OnError(err)
+		go listener.OnError(err)
 		return nil, nil, err
 	}
 
 	// Notify the listener with the credentials.
-	listener.OnNext(token)
+	go listener.OnNext(token)
 
 	cancel := func() error {
 		// Remove the listener from the list of listeners.
