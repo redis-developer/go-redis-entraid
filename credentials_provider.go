@@ -4,34 +4,35 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/redis-developer/go-redis-entraid/manager"
+	"github.com/redis-developer/go-redis-entraid/token"
 	"github.com/redis/go-redis/v9/auth"
 )
 
-// entraidCredentialsProvider implements the auth.StreamingCredentialsProvider interface.
+// Ensure entraidCredentialsProvider implements the auth.StreamingCredentialsProvider interface.
 var _ auth.StreamingCredentialsProvider = (*entraidCredentialsProvider)(nil)
 
-// entraidCredentialsProvider is a struct that implements the CredentialProvider interface.
+// entraidCredentialsProvider is a struct that implements the StreamingCredentialsProvider interface.
 type entraidCredentialsProvider struct {
 	options CredentialsProviderOptions
 
-	tokenManager       TokenManager
-	cancelTokenManager cancelFunc
+	tokenManager       manager.TokenManager
+	cancelTokenManager manager.CancelFunc
 
 	// listeners is a slice of listeners that are notified when the token manager receives a new token.
 	listeners []auth.CredentialsListener
 
 	// rwLock is a mutex that is used to synchronize access to the listeners slice.
-	// It is used to ensure that only one goroutine can access the listeners slice at a time.
 	rwLock sync.RWMutex
 }
 
-// onTokenNext is a method that is called when the token manager receives a new token.
-func (e *entraidCredentialsProvider) onTokenNext(token *Token) {
+// onTokenNext is a method that is called when the token manager receives a new manager.
+func (e *entraidCredentialsProvider) onTokenNext(t *token.Token) {
 	e.rwLock.RLock()
 	defer e.rwLock.RUnlock()
-	// Notify all listeners with the new token.
+	// Notify all listeners with the new manager.
 	for _, listener := range e.listeners {
-		listener.OnNext(token)
+		listener.OnNext(t)
 	}
 }
 
@@ -63,7 +64,7 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 	}
 
 	if !alreadySubscribed {
-		// Get the token from the identity provider.
+		// Get the manager from the identity provider.
 		e.listeners = append(e.listeners, listener)
 	}
 	e.rwLock.Unlock()
@@ -102,30 +103,12 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 	return token, cancel, nil
 }
 
-type entraidTokenListener struct {
-	cp *entraidCredentialsProvider
-}
-
-func tokenListenerFromCP(cp *entraidCredentialsProvider) TokenListener {
-	return &entraidTokenListener{
-		cp,
-	}
-}
-
-func (l *entraidTokenListener) OnTokenNext(token *Token) {
-	l.cp.onTokenNext(token)
-}
-
-func (l *entraidTokenListener) OnTokenError(err error) {
-	l.cp.onTokenError(err)
-}
-
 // newCredentialsProvider creates a new credentials provider.
 // It takes a TokenManager and CredentialProviderOptions as arguments and returns a StreamingCredentialsProvider interface.
-// The TokenManager is used to obtain the token, and the CredentialProviderOptions contains options for the credentials provider.
+// The TokenManager is used to obtain the manager, and the CredentialProviderOptions contains options for the credentials provider.
 // The credentials provider is responsible for managing the credentials and refreshing them when necessary.
 // It returns an error if the token manager cannot be started.
-func newCredentialsProvider(tokenManager TokenManager, options CredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
+func newCredentialsProvider(tokenManager manager.TokenManager, options CredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
 	cp := &entraidCredentialsProvider{
 		tokenManager: tokenManager,
 		options:      options,

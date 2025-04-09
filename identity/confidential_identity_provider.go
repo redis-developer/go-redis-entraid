@@ -1,4 +1,4 @@
-package entraid
+package identity
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
+	"github.com/redis-developer/go-redis-entraid/shared"
 )
 
 // ConfidentialIdentityProviderOptions represents the options for the confidential identity provider.
@@ -26,7 +27,7 @@ type ConfidentialIdentityProviderOptions struct {
 	// ClientPrivateKey is the private key used to authenticate with the identity provider.
 	ClientPrivateKey crypto.PrivateKey
 
-	// Scopes is the list of scopes used to request a token from the identity provider.
+	// Scopes is the list of scopes used to request a manager from the identity provider.
 	Scopes []string
 
 	// Authority is the authority used to authenticate with the identity provider.
@@ -41,15 +42,15 @@ type ConfidentialIdentityProvider struct {
 	// credential is the credential used to authenticate with the identity provider.
 	credential confidential.Credential
 
-	// scopes is the list of scopes used to request a token from the identity provider.
+	// scopes is the list of scopes used to request a manager from the identity provider.
 	scopes []string
 
-	// client confidential is the client used to request a token from the identity provider.
+	// client confidential is the client used to request a manager from the identity provider.
 	client *confidential.Client
 }
 
 // NewConfidentialIdentityProvider creates a new confidential identity provider.
-// It is used to configure the identity provider when requesting a token.
+// It is used to configure the identity provider when requesting a manager.
 // It is used to specify the client ID, tenant ID, and scopes for the identity.
 // It is also used to specify the type of credentials used to authenticate with the identity provider.
 // The credentials can be either a client secret or a client certificate.
@@ -115,17 +116,17 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 	}, nil
 }
 
-// RequestToken requests a token from the identity provider.
+// RequestToken requests a manager from the identity provider.
 // It returns the identity provider response, including the auth result.
-func (c *ConfidentialIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
+func (c *ConfidentialIdentityProvider) RequestToken() (shared.IdentityProviderResponse, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("client is not initialized")
 	}
 
 	result, err := c.client.AcquireTokenByCredential(context.TODO(), c.scopes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire token: %w", err)
+		return nil, fmt.Errorf("failed to acquire manager: %w", err)
 	}
 
-	return NewIDPResponse(ResponseTypeAuthResult, &result)
+	return shared.NewIDPResponse(shared.ResponseTypeAuthResult, &result)
 }

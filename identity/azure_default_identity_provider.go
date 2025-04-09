@@ -1,4 +1,4 @@
-package entraid
+package identity
 
 import (
 	"context"
@@ -7,13 +7,14 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/redis-developer/go-redis-entraid/shared"
 )
 
 // DefaultAzureIdentityProviderOptions represents the options for the DefaultAzureIdentityProvider.
 type DefaultAzureIdentityProviderOptions struct {
 	// AzureOptions is the options used to configure the Azure identity provider.
 	AzureOptions *azidentity.DefaultAzureCredentialOptions
-	// Scopes is the list of scopes used to request a token from the identity provider.
+	// Scopes is the list of scopes used to request a manager from the identity provider.
 	Scopes []string
 
 	// credFactory is a factory for creating the default Azure credential.
@@ -23,16 +24,16 @@ type DefaultAzureIdentityProviderOptions struct {
 }
 
 type credFactory interface {
-	NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (defaultAzureCredential, error)
+	NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (azureCredential, error)
 }
 
-type defaultAzureCredential interface {
+type azureCredential interface {
 	GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error)
 }
 
 type defaultCredFactory struct{}
 
-func (d *defaultCredFactory) NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (defaultAzureCredential, error) {
+func (d *defaultCredFactory) NewDefaultAzureCredential(options *azidentity.DefaultAzureCredentialOptions) (azureCredential, error) {
 	return azidentity.NewDefaultAzureCredential(options)
 }
 
@@ -55,9 +56,9 @@ func NewDefaultAzureIdentityProvider(opts DefaultAzureIdentityProviderOptions) (
 	}, nil
 }
 
-// RequestToken requests a token from the Azure Default Identity provider.
-// It returns the token, the expiration time, and an error if any.
-func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
+// RequestToken requests a manager from the Azure Default Identity provider.
+// It returns the manager, the expiration time, and an error if any.
+func (a *DefaultAzureIdentityProvider) RequestToken() (shared.IdentityProviderResponse, error) {
 	credFactory := a.credFactory
 	if credFactory == nil {
 		credFactory = &defaultCredFactory{}
@@ -69,8 +70,8 @@ func (a *DefaultAzureIdentityProvider) RequestToken() (IdentityProviderResponse,
 
 	token, err := cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get token: %w", err)
+		return nil, fmt.Errorf("failed to get manager: %w", err)
 	}
 
-	return NewIDPResponse(ResponseTypeAccessToken, &token)
+	return shared.NewIDPResponse(shared.ResponseTypeAccessToken, &token)
 }

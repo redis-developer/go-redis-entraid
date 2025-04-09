@@ -1,4 +1,4 @@
-package entraid
+package identity
 
 import (
 	"testing"

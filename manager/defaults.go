@@ -1,4 +1,4 @@
-package entraid
+package manager
 
 const (
 	DefaultExpirationRefreshRatio        = 0.7

@@ -1,10 +1,11 @@
-package entraid
+package identity
 
 import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/redis-developer/go-redis-entraid/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -42,15 +43,15 @@ func TestAzureDefaultIdentityProvider_RequestToken(t *testing.T) {
 		t.Fatalf("failed to create DefaultAzureIdentityProvider: %v", err)
 	}
 
-	// Request a token from the provider in incorrect environment
+	// Request a manager from the provider in incorrect environment
 	// should fail.
 	token, err := provider.RequestToken()
-	assert.Nil(t, token, "token should be nil")
-	assert.Error(t, err, "failed to request token")
+	assert.Nil(t, token, "manager should be nil")
+	assert.Error(t, err, "failed to request manager")
 
 	// use mockAzureCredential to simulate the environment
 	mToken := azcore.AccessToken{
-		Token: testJWTtoken,
+		Token: testJWTToken,
 	}
 	mCreds := &mockAzureCredential{}
 	mCreds.On("GetToken", mock.Anything, mock.Anything).Return(mToken, nil)
@@ -58,10 +59,10 @@ func TestAzureDefaultIdentityProvider_RequestToken(t *testing.T) {
 	mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(mCreds, nil)
 	provider.credFactory = mCredFactory
 	token, err = provider.RequestToken()
-	assert.NotNil(t, token, "token should not be nil")
-	assert.NoError(t, err, "failed to request token")
-	assert.Equal(t, ResponseTypeAccessToken, token.Type(), "token type should be access token")
-	assert.Equal(t, mToken, token.AccessToken(), "access token should be equal to testJWTtoken")
+	assert.NotNil(t, token, "manager should not be nil")
+	assert.NoError(t, err, "failed to request manager")
+	assert.Equal(t, shared.ResponseTypeAccessToken, token.Type(), "manager type should be access manager")
+	assert.Equal(t, mToken, token.AccessToken(), "access manager should be equal to testJWTToken")
 }
 
 func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
@@ -75,14 +76,14 @@ func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
 	}
 
 	t.Run("RequestToken with custom scopes", func(t *testing.T) {
-		// Request a token from the provider
+		// Request a manager from the provider
 		token, err := provider.RequestToken()
-		assert.Nil(t, token, "token should be nil")
-		assert.Error(t, err, "failed to request token")
+		assert.Nil(t, token, "manager should be nil")
+		assert.Error(t, err, "failed to request manager")
 
 		// use mockAzureCredential to simulate the environment
 		mToken := azcore.AccessToken{
-			Token: testJWTtoken,
+			Token: testJWTToken,
 		}
 		mCreds := &mockAzureCredential{}
 		mCreds.On("GetToken", mock.Anything, policy.TokenRequestOptions{Scopes: scopes}).Return(mToken, nil)
@@ -90,10 +91,10 @@ func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
 		mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(mCreds, nil)
 		provider.credFactory = mCredFactory
 		token, err = provider.RequestToken()
-		assert.NotNil(t, token, "token should not be nil")
-		assert.NoError(t, err, "failed to request token")
-		assert.Equal(t, ResponseTypeAccessToken, token.Type(), "token type should be access token")
-		assert.Equal(t, mToken, token.AccessToken(), "access token should be equal to testJWTtoken")
+		assert.NotNil(t, token, "manager should not be nil")
+		assert.NoError(t, err, "failed to request manager")
+		assert.Equal(t, shared.ResponseTypeAccessToken, token.Type(), "manager type should be access manager")
+		assert.Equal(t, mToken, token.AccessToken(), "access manager should be equal to testJWTToken")
 	})
 	t.Run("RequestToken with error from credFactory", func(t *testing.T) {
 		// use mockAzureCredential to simulate the environment
@@ -101,7 +102,7 @@ func TestAzureDefaultIdentityProvider_RequestTokenWithScopes(t *testing.T) {
 		mCredFactory.On("NewDefaultAzureCredential", mock.Anything).Return(nil, assert.AnError)
 		provider.credFactory = mCredFactory
 		token, err := provider.RequestToken()
-		assert.Nil(t, token, "token should be nil")
-		assert.Error(t, err, "failed to request token")
+		assert.Nil(t, token, "manager should be nil")
+		assert.Error(t, err, "failed to request manager")
 	})
 }

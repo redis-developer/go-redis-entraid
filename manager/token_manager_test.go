@@ -1,4 +1,4 @@
-package entraid
+package manager
 
 import (
 	"fmt"
@@ -14,6 +14,9 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+	"github.com/redis-developer/go-redis-entraid/internal"
+	"github.com/redis-developer/go-redis-entraid/shared"
+	"github.com/redis-developer/go-redis-entraid/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -27,7 +30,7 @@ var assertFuncNameMatches = func(t *testing.T, func1, func2 interface{}) {
 func TestTokenManager(t *testing.T) {
 	t.Parallel()
 	t.Run("Without IDP", func(t *testing.T) {
-		tokenManager, err := NewTokenManager(nil,
+		tokenManager, err := NewManager(nil,
 			TokenManagerOptions{},
 		)
 		assert.Error(t, err)
@@ -36,7 +39,7 @@ func TestTokenManager(t *testing.T) {
 
 	t.Run("With IDP", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -51,7 +54,7 @@ func TestTokenManagerWithOptions(t *testing.T) {
 		options := TokenManagerOptions{
 			ExpirationRefreshRatio: 5,
 		}
-		tokenManager, err := NewTokenManager(idp, options)
+		tokenManager, err := NewManager(idp, options)
 		assert.Error(t, err)
 		assert.Nil(t, tokenManager)
 	})
@@ -60,7 +63,7 @@ func TestTokenManagerWithOptions(t *testing.T) {
 		options := TokenManagerOptions{
 			ExpirationRefreshRatio: 0.5,
 		}
-		tokenManager, err := NewTokenManager(idp, options)
+		tokenManager, err := NewManager(idp, options)
 		assert.NoError(t, err)
 		assert.NotNil(t, tokenManager)
 		tm, ok := tokenManager.(*entraidTokenManager)
@@ -70,7 +73,7 @@ func TestTokenManagerWithOptions(t *testing.T) {
 	t.Run("Default Options", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		options := TokenManagerOptions{}
-		tokenManager, err := NewTokenManager(idp, options)
+		tokenManager, err := NewManager(idp, options)
 		assert.NoError(t, err)
 		assert.NotNil(t, tokenManager)
 		tm, ok := tokenManager.(*entraidTokenManager)
@@ -87,7 +90,7 @@ func TestTokenManagerWithOptions(t *testing.T) {
 
 func TestDefaultIdentityProviderResponseParserOr(t *testing.T) {
 	t.Parallel()
-	var f IdentityProviderResponseParser = &mockIdentityProviderResponseParser{}
+	var f shared.IdentityProviderResponseParser = &mockIdentityProviderResponseParser{}
 
 	result := defaultIdentityProviderResponseParserOr(f)
 	assert.NotNil(t, result)
@@ -120,12 +123,12 @@ func TestDefaultIsRetryable(t *testing.T) {
 	})
 
 	t.Run("Retryable Error with Timeout", func(t *testing.T) {
-		err := &mockError{isTimeout: true}
+		err := newMockError(true)
 		result := defaultIsRetryable(err)
 		assert.True(t, result)
 	})
 	t.Run("Retryable Error with Temporary", func(t *testing.T) {
-		err := &mockError{isTemporary: true}
+		err := newMockError(true)
 		result := defaultIsRetryable(err)
 		assert.True(t, result)
 	})
@@ -143,7 +146,7 @@ func TestTokenManager_Close(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -157,7 +160,7 @@ func TestTokenManager_Close(t *testing.T) {
 			err = tokenManager.Close()
 			assert.Error(t, err)
 		})
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -185,7 +188,7 @@ func TestTokenManager_Close(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -196,7 +199,7 @@ func TestTokenManager_Close(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -220,7 +223,7 @@ func TestTokenManager_Close(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -231,7 +234,7 @@ func TestTokenManager_Close(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -280,7 +283,7 @@ func TestTokenManager_Start(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -291,7 +294,7 @@ func TestTokenManager_Start(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -335,7 +338,7 @@ func TestTokenManager_Start(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -346,7 +349,7 @@ func TestTokenManager_Start(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		assert.NotPanics(t, func() {
@@ -395,118 +398,118 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(time.Hour).UTC(),
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
-		assert.NotNil(t, token)
-		assert.Equal(t, authResult.ExpiresOn, token.ExpirationOn())
+		assert.NotNil(t, token1)
+		assert.Equal(t, authResult.ExpiresOn, token1.ExpirationOn())
 	})
 	t.Run("Default IdentityProviderResponseParser with type AccessToken", func(t *testing.T) {
 		accessToken := &azcore.AccessToken{
-			Token:     testJWTtoken,
+			Token:     testJWTToken,
 			ExpiresOn: time.Now().Add(time.Hour).UTC(),
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAccessToken, accessToken)
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAccessToken, accessToken)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
-		assert.NotNil(t, token)
-		assert.Equal(t, accessToken.ExpiresOn, token.ExpirationOn())
-		assert.Equal(t, accessToken.Token, token.RawCredentials())
+		assert.NotNil(t, token1)
+		assert.Equal(t, accessToken.ExpiresOn, token1.ExpirationOn())
+		assert.Equal(t, accessToken.Token, token1.RawCredentials())
 	})
 	t.Run("Default IdentityProviderResponseParser with type RawToken", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTtoken)
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, testJWTToken)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.NoError(t, err)
-		assert.NotNil(t, token)
+		assert.NotNil(t, token1)
 	})
 
 	t.Run("Default IdentityProviderResponseParser with expired JWT Token", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTExpiredToken)
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, testJWTExpiredToken)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 
 	t.Run("Default IdentityProviderResponseParser with zero expiry JWT Token", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, testJWTWithZeroExpiryToken)
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, testJWTWithZeroExpiryToken)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 
 	t.Run("NewIDPResponse with type Unknown", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse("Unknown", testJWTtoken)
+		idpResponse, err := shared.NewIDPResponse("Unknown", testJWTToken)
 		assert.Error(t, err)
 		assert.Nil(t, idpResponse)
 	})
 
 	t.Run("NewIDPResponse with type and nil value", func(t *testing.T) {
-		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, nil)
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, nil)
 		assert.Error(t, err)
 		assert.Nil(t, idpResponse)
-		idpResponse, err = NewIDPResponse(ResponseTypeAuthResult, nil)
+		idpResponse, err = shared.NewIDPResponse(shared.ResponseTypeAuthResult, nil)
 		assert.Error(t, err)
 		assert.Nil(t, idpResponse)
-		idpResponse, err = NewIDPResponse(ResponseTypeAccessToken, nil)
+		idpResponse, err = shared.NewIDPResponse(shared.ResponseTypeAccessToken, nil)
 		assert.Error(t, err)
 		assert.Nil(t, idpResponse)
 	})
 	t.Run("Default IdentityProviderResponseParser with type Unknown", func(t *testing.T) {
-		resp := &authResult{
-			resultType: "Unknown",
+		resp := &internal.IDPResp{
+			ResultType: "Unknown",
 		}
-		token, err := parser.ParseResponse(resp)
+		token1, err := parser.ParseResponse(resp)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 	types := []string{
-		ResponseTypeAuthResult,
-		ResponseTypeAccessToken,
-		ResponseTypeRawToken,
+		shared.ResponseTypeAuthResult,
+		shared.ResponseTypeAccessToken,
+		shared.ResponseTypeRawToken,
 	}
 	for _, rt := range types {
 		t.Run(fmt.Sprintf("Default IdentityProviderResponseParser with response type %s and nil value", rt), func(t *testing.T) {
-			resp := &authResult{
-				resultType: rt,
+			resp := &internal.IDPResp{
+				ResultType: rt,
 			}
-			token, err := parser.ParseResponse(resp)
+			token1, err := parser.ParseResponse(resp)
 			assert.Error(t, err)
-			assert.Nil(t, token)
+			assert.Nil(t, token1)
 		})
 	}
 
 	t.Run("Default IdentityProviderResponseParser with response nil", func(t *testing.T) {
-		token, err := parser.ParseResponse(nil)
+		token1, err := parser.ParseResponse(nil)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
-	t.Run("Default IdentityProviderResponseParser with expired token", func(t *testing.T) {
+	t.Run("Default IdentityProviderResponseParser with expired manager", func(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
-	t.Run("Default IdentityProviderResponseParser with token that expired", func(t *testing.T) {
+	t.Run("Default IdentityProviderResponseParser with manager that expired", func(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
-		token, err := parser.ParseResponse(idpResponse)
+		token1, err := parser.ParseResponse(idpResponse)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 }
 
@@ -516,7 +519,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -527,7 +530,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -539,9 +542,9 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, tm.listener)
 
-		token, err := tokenManager.GetToken(false)
+		token1, err := tokenManager.GetToken(false)
 		assert.NoError(t, err)
-		assert.NotNil(t, token)
+		assert.NotNil(t, token1)
 
 	})
 
@@ -549,7 +552,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -560,7 +563,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.True(t, ok)
 		assert.Nil(t, tm.listener)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
@@ -572,9 +575,9 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.Nil(t, cancel)
 		assert.NotNil(t, tm.listener)
 	})
-	t.Run("GetToken with expired token", func(t *testing.T) {
+	t.Run("GetToken with expired manager", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -582,7 +585,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
 		assert.NotNil(t, tokenManager)
@@ -592,14 +595,14 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 
 		idp.On("RequestToken").Return(idpResponse, nil)
 
-		token, err := tokenManager.GetToken(false)
+		token1, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 
-	t.Run("GetToken with nil token", func(t *testing.T) {
+	t.Run("GetToken with nil manager", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -607,20 +610,20 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		_, ok := tokenManager.(*entraidTokenManager)
 		assert.True(t, ok)
 
-		rawResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(rawResponse, nil)
 
-		token, err := tokenManager.GetToken(false)
+		token1, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 
 	t.Run("GetToken with nil from parser", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -630,20 +633,20 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		_, ok := tokenManager.(*entraidTokenManager)
 		assert.True(t, ok)
 
-		idpResponse, err := NewIDPResponse(ResponseTypeRawToken, "test")
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
 		assert.NoError(t, err)
 		idp.On("RequestToken").Return(idpResponse, nil)
 		mParser.On("ParseResponse", idpResponse).Return(nil, nil)
 
-		token, err := tokenManager.GetToken(false)
+		token1, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 
 	t.Run("GetToken with idp error", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -655,9 +658,9 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 
 		idp.On("RequestToken").Return(nil, fmt.Errorf("idp error"))
 
-		token, err := tokenManager.GetToken(false)
+		token1, err := tokenManager.GetToken(false)
 		assert.Error(t, err)
-		assert.Nil(t, token)
+		assert.Nil(t, token1)
 	})
 }
 
@@ -666,7 +669,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 	t.Parallel()
 	t.Run("durationToRenewal", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
-		tokenManager, err := NewTokenManager(idp, TokenManagerOptions{
+		tokenManager, err := NewManager(idp, TokenManagerOptions{
 			LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
 		})
 		assert.NoError(t, err)
@@ -675,15 +678,15 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 		assert.True(t, ok)
 
 		result := tm.durationToRenewal()
-		// returns 0 for nil token
+		// returns 0 for nil manager
 		assert.Equal(t, time.Duration(0), result)
 
-		// get token that expires before the lower bound
+		// get manager that expires before the lower bound
 		assert.NotPanics(t, func() {
 			expiresSoon := &public.AuthResult{
 				ExpiresOn: time.Now().Add(tm.lowerBoundDuration - time.Minute).UTC(),
 			}
-			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 				expiresSoon)
 			assert.NoError(t, err)
 			idp.On("RequestToken").Return(idpResponse, nil).Once()
@@ -697,13 +700,13 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 			assert.Equal(t, time.Duration(0), result)
 		})
 
-		// get token that expires after the lower bound and expirationRefreshRatio to 1
+		// get manager that expires after the lower bound and expirationRefreshRatio to 1
 		assert.NotPanics(t, func() {
 			tm.expirationRefreshRatio = 1
 			expiresAfterlb := &public.AuthResult{
 				ExpiresOn: time.Now().Add(tm.lowerBoundDuration + time.Hour).UTC(),
 			}
-			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+			idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 				expiresAfterlb)
 			assert.NoError(t, err)
 			idp.On("RequestToken").Return(idpResponse, nil).Once()
@@ -714,7 +717,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 
 			// return time to lower bound, if the returned time will be after the lower bound
 			result = tm.durationToRenewal()
-			assert.InEpsilon(t, time.Until(tm.token.expiresOn.Add(-1*tm.lowerBoundDuration)), result, float64(time.Second))
+			assert.InEpsilon(t, time.Until(tm.token.ExpirationOn().Add(-1*tm.lowerBoundDuration)), result, float64(time.Second))
 		})
 
 	})
@@ -726,7 +729,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
 		mParser := &mockIdentityProviderResponseParser{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				IdentityProviderResponseParser: mParser,
 			},
@@ -742,12 +745,12 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		authResult := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
 
 		idp.On("RequestToken").Return(idpResponse, nil).Once()
-		token := NewToken(
+		token1 := token.New(
 			"test",
 			"test",
 			"test",
@@ -756,8 +759,8 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 			int64(time.Until(expiresOn)),
 		)
 
-		mParser.On("ParseResponse", idpResponse).Return(token, nil).Once()
-		listener.On("OnTokenNext", token).Return().Once()
+		mParser.On("ParseResponse", idpResponse).Return(token1, nil).Once()
+		listener.On("OnTokenNext", token1).Return().Once()
 
 		cancel, err := tokenManager.Start(listener)
 		assert.NotNil(t, cancel)
@@ -784,7 +787,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen with 0 renewal duration", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
 			},
@@ -802,7 +805,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
@@ -811,10 +814,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 
 		cancel, err := tokenManager.Start(listener)
 		assert.NotNil(t, cancel)
@@ -835,7 +838,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen with 0 renewal duration and closing the manager", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
 				RetryOptions: RetryOptions{
@@ -856,7 +859,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
@@ -865,10 +868,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 
 		cancel, err := tokenManager.Start(listener)
 		assert.NotNil(t, cancel)
@@ -895,7 +898,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -911,7 +914,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
@@ -920,10 +923,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 
 		cancel, err := tokenManager.Start(listener)
 		assert.NotNil(t, cancel)
@@ -943,7 +946,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen with retriable error", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -959,7 +962,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
@@ -969,10 +972,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0)
 			assert.NotNil(t, err)
@@ -1001,7 +1004,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen with NOT retriable error", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{},
 		)
 		assert.NoError(t, err)
@@ -1017,7 +1020,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
@@ -1027,10 +1030,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0).(error)
 			assert.NotNil(t, err)
@@ -1063,7 +1066,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		maxAttempts := 3
 		maxDelayMs := 500
 		initialDelayMs := 100
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				RetryOptions: RetryOptions{
 					MaxAttempts:       maxAttempts,
@@ -1086,7 +1089,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
@@ -1096,13 +1099,13 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 		var start, end time.Time
 		var elapsed time.Duration
 
 		_ = listener.
-			On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).
+			On("OnTokenNext", mock.AnythingOfType("*token.Token")).
 			Run(func(_ mock.Arguments) {
 				start = time.Now()
 			}).Return()
@@ -1151,7 +1154,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 	t.Run("Start and Listen and close during retries", func(t *testing.T) {
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}
-		tokenManager, err := NewTokenManager(idp,
+		tokenManager, err := NewManager(idp,
 			TokenManagerOptions{
 				RetryOptions: RetryOptions{
 					MaxAttempts: 100,
@@ -1171,7 +1174,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		res := &public.AuthResult{
 			ExpiresOn: expiresOn,
 		}
-		idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
+		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
@@ -1181,10 +1184,10 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 				ExpiresOn: expiresOn,
 			}
 			response := idpResponse.(*authResult)
-			response.authResult = res
+			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
 
-		listener.On("OnTokenNext", mock.AnythingOfType("*entraid.Token")).Return()
+		listener.On("OnTokenNext", mock.AnythingOfType("*token.Token")).Return()
 		maxAttemptsReached := make(chan struct{})
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0).(error)

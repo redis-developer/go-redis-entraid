@@ -1,4 +1,4 @@
-package entraid
+package identity
 
 import (
 	"context"
@@ -6,26 +6,27 @@ import (
 	"fmt"
 
 	mi "github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity"
+	"github.com/redis-developer/go-redis-entraid/shared"
 )
 
 // ManagedIdentityProviderOptions represents the options for the managed identity provider.
-// It is used to configure the identity provider when requesting a token.
+// It is used to configure the identity provider when requesting a manager.
 type ManagedIdentityProviderOptions struct {
 	// UserAssignedClientID is the client ID of the user assigned identity.
-	// This is used to identify the identity when requesting a token.
+	// This is used to identify the identity when requesting a manager.
 	UserAssignedClientID string
 	// ManagedIdentityType is the type of managed identity.
 	// This can be either SystemAssigned or UserAssigned.
 	ManagedIdentityType string
 	// Scopes is a list of scopes that the identity has access to.
-	// This is used to specify the permissions that the identity has when requesting a token.
+	// This is used to specify the permissions that the identity has when requesting a manager.
 	Scopes []string
 }
 
 // ManagedIdentityProvider represents a managed identity provider.
 type ManagedIdentityProvider struct {
 	// userAssignedClientID is the client ID of the user assigned identity.
-	// This is used to identify the identity when requesting a token.
+	// This is used to identify the identity when requesting a manager.
 	userAssignedClientID string
 
 	// managedIdentityType is the type of managed identity.
@@ -33,15 +34,15 @@ type ManagedIdentityProvider struct {
 	managedIdentityType string
 
 	// scopes is a list of scopes that the identity has access to.
-	// This is used to specify the permissions that the identity has when requesting a token.
+	// This is used to specify the permissions that the identity has when requesting a manager.
 	scopes []string
 
-	// client is the managed identity client used to request a token.
+	// client is the managed identity client used to request a manager.
 	client *mi.Client
 }
 
 // NewManagedIdentityProvider creates a new managed identity provider for Azure with managed identity.
-// It is used to configure the identity provider when requesting a token.
+// It is used to configure the identity provider when requesting a manager.
 func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedIdentityProvider, error) {
 	var client mi.Client
 	var err error
@@ -54,7 +55,7 @@ func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedId
 	case SystemAssignedIdentity:
 		// SystemAssignedIdentity is the type of identity that is automatically managed by Azure.
 		// This type of identity is automatically created and managed by Azure.
-		// It is used to authenticate the identity when requesting a token.
+		// It is used to authenticate the identity when requesting a manager.
 		client, err = mi.New(mi.SystemAssigned())
 	case UserAssignedIdentity:
 		// UserAssignedIdentity is required to be specified when using a user assigned identity.
@@ -77,9 +78,9 @@ func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedId
 	}, nil
 }
 
-// RequestToken requests a token from the managed identity provider.
+// RequestToken requests a manager from the managed identity provider.
 // It returns IdentityProviderResponse, which contains the Acc and the expiration time.
-func (m *ManagedIdentityProvider) RequestToken() (IdentityProviderResponse, error) {
+func (m *ManagedIdentityProvider) RequestToken() (shared.IdentityProviderResponse, error) {
 	if m.client == nil {
 		return nil, errors.New("managed identity client is not initialized")
 	}
@@ -91,12 +92,12 @@ func (m *ManagedIdentityProvider) RequestToken() (IdentityProviderResponse, erro
 	if len(m.scopes) > 0 {
 		resource = m.scopes[0]
 	}
-	// acquire token using the managed identity client
+	// acquire manager using the managed identity client
 	// the resource is the URL of the resource that the identity has access to
 	authResult, err := m.client.AcquireToken(context.TODO(), resource)
 	if err != nil {
-		return nil, fmt.Errorf("coudn't acquire token: %w", err)
+		return nil, fmt.Errorf("coudn't acquire manager: %w", err)
 	}
 
-	return NewIDPResponse(ResponseTypeAuthResult, &authResult)
+	return shared.NewIDPResponse(shared.ResponseTypeAuthResult, &authResult)
 }

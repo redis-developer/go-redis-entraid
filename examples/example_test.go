@@ -8,6 +8,7 @@ import (
 )
 
 func ExampleEstablishRedisConn() {
+
 	rdb := redis.NewUniversalClient(&redis.UniversalOptions{
 		Addrs: []string{"localhost:6379"},
 	})
