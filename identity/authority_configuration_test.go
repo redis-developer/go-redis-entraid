@@ -7,6 +7,7 @@ import (
 )
 
 func TestAuthorityConfiguration(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		authorityType string
@@ -56,6 +57,7 @@ func TestAuthorityConfiguration(t *testing.T) {
 }
 
 func TestAuthorityConfigurationDefault(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{}
 	result, err := ac.getAuthority()
 	assert.NoError(t, err)
@@ -63,6 +65,7 @@ func TestAuthorityConfigurationDefault(t *testing.T) {
 }
 
 func TestAuthorityConfigurationMultiTenant(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: AuthorityTypeMultiTenant,
 		TenantID:      "12345",
@@ -73,6 +76,7 @@ func TestAuthorityConfigurationMultiTenant(t *testing.T) {
 }
 
 func TestAuthorityConfigurationCustom(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: AuthorityTypeCustom,
 		Authority:     "https://custom-authority.com",
@@ -83,6 +87,7 @@ func TestAuthorityConfigurationCustom(t *testing.T) {
 }
 
 func TestAuthorityConfigurationInvalid(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: "invalid",
 	}
@@ -92,6 +97,7 @@ func TestAuthorityConfigurationInvalid(t *testing.T) {
 }
 
 func TestAuthorityConfigurationMissingTenantID(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: AuthorityTypeMultiTenant,
 	}
@@ -101,6 +107,7 @@ func TestAuthorityConfigurationMissingTenantID(t *testing.T) {
 }
 
 func TestAuthorityConfigurationMissingAuthority(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: AuthorityTypeCustom,
 	}
@@ -110,6 +117,7 @@ func TestAuthorityConfigurationMissingAuthority(t *testing.T) {
 }
 
 func TestAuthorityConfigurationDefaultAuthorityType(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		TenantID: "12345",
 	}
@@ -119,6 +127,7 @@ func TestAuthorityConfigurationDefaultAuthorityType(t *testing.T) {
 }
 
 func TestAuthorityConfigurationDefaultAuthorityTypeWithTenantID(t *testing.T) {
+	t.Parallel()
 	ac := AuthorityConfiguration{
 		AuthorityType: AuthorityTypeDefault,
 		TenantID:      "12345",

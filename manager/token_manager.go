@@ -1,14 +1,11 @@
 package manager
 
 import (
-	"errors"
 	"fmt"
-	"net"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis-developer/go-redis-entraid/internal"
 	"github.com/redis-developer/go-redis-entraid/shared"
 	"github.com/redis-developer/go-redis-entraid/token"
 )
@@ -83,89 +80,28 @@ type TokenManager interface {
 	// Close closes the token manager and releases any resources.
 	Close() error
 }
-type defaultIdentityProviderResponseParser struct{}
 
-// ParseResponse parses the response from the identity provider and extracts the manager.
-// It takes an IdentityProviderResponse as an argument and returns a Token and an error if any.
-// The IdentityProviderResponse contains the raw manager and the expiration time.
-func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.IdentityProviderResponse) (*token.Token, error) {
-	var username, password, rawToken string
-	var expiresOn time.Time
-	if response == nil {
-		return nil, fmt.Errorf("response is nil")
-	}
-	switch response.Type() {
-	case shared.ResponseTypeAuthResult:
-		authResult := response.AuthResult()
-		if authResult.ExpiresOn.IsZero() {
-			return nil, fmt.Errorf("auth result invalid")
-		}
-		rawToken = authResult.IDToken.RawToken
-		username = authResult.IDToken.Oid
-		password = rawToken
-		expiresOn = authResult.ExpiresOn.UTC()
-	case shared.ResponseTypeRawToken, shared.ResponseTypeAccessToken:
-		token := response.RawToken()
-		if response.Type() == shared.ResponseTypeAccessToken {
-			accessToken := response.AccessToken()
-			if accessToken.Token == "" {
-				return nil, fmt.Errorf("access manager is empty")
-			}
-			token = accessToken.Token
-			expiresOn = accessToken.ExpiresOn.UTC()
-		}
+// CancelFunc is a function that cancels the token manager.
+type CancelFunc func() error
 
-		claims := struct {
-			jwt.RegisteredClaims
-			Oid string `json:"oid,omitempty"`
-		}{}
-
-		// jwt manager should be verified from the identity provider
-		_, _, err := jwt.NewParser().ParseUnverified(token, &claims)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse jwt manager: %w", err)
-		}
-		rawToken = token
-		username = claims.Oid
-		password = rawToken
-
-		if expiresOn.IsZero() && claims.ExpiresAt != nil {
-			expiresOn = claims.ExpiresAt.Time
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown response type: %s", response.Type())
-	}
-
-	expiresOn = expiresOn.UTC()
-
-	if expiresOn.IsZero() {
-		return nil, fmt.Errorf("expires on is zero")
-	}
-
-	if expiresOn.Before(time.Now()) {
-		return nil, fmt.Errorf("expires on is in the past")
-	}
-
-	// parse manager as jwt manager and get claims
-	return token.New(
-		username,
-		password,
-		rawToken,
-		expiresOn,
-		time.Now().UTC(),
-		int64(time.Until(expiresOn).Seconds()),
-	), nil
+// TokenListener is an interface that contains the methods for receiving updates from the token manager.
+// The token manager will call the listener's OnTokenNext method with the updated manager.
+// If an error occurs, the token manager will call the listener's OnTokenError method with the error.
+type TokenListener interface {
+	// OnTokenNext is called when the manager is updated.
+	OnTokenNext(t *token.Token)
+	// OnTokenError is called when an error occurs.
+	OnTokenError(err error)
 }
 
 // entraidIdentityProviderResponseParser is the default implementation of the IdentityProviderResponseParser interface.
 var entraidIdentityProviderResponseParser shared.IdentityProviderResponseParser = &defaultIdentityProviderResponseParser{}
 
-// NewManager creates a new TokenManager.
+// NewTokenManager creates a new TokenManager.
 // It takes an IdentityProvider and TokenManagerOptions as arguments and returns a TokenManager interface.
 // The IdentityProvider is used to obtain the manager, and the TokenManagerOptions contains options for the TokenManager.
 // The TokenManager is responsible for managing the manager and refreshing it when necessary.
-func NewManager(idp shared.IdentityProvider, options TokenManagerOptions) (TokenManager, error) {
+func NewTokenManager(idp shared.IdentityProvider, options TokenManagerOptions) (TokenManager, error) {
 	if options.ExpirationRefreshRatio < 0 || options.ExpirationRefreshRatio > 1 {
 		return nil, fmt.Errorf("expiration refresh ratio must be between 0 and 1")
 	}
@@ -178,7 +114,7 @@ func NewManager(idp shared.IdentityProvider, options TokenManagerOptions) (Token
 	return &entraidTokenManager{
 		idp:                            idp,
 		token:                          nil,
-		closed:                         make(chan struct{}),
+		closedChan:                     make(chan struct{}),
 		expirationRefreshRatio:         options.ExpirationRefreshRatio,
 		lowerRefreshBoundMs:            options.LowerRefreshBoundMs,
 		lowerBoundDuration:             time.Duration(options.LowerRefreshBoundMs) * time.Millisecond,
@@ -194,6 +130,9 @@ type entraidTokenManager struct {
 
 	// token is the authentication token for the user which should be kept in memory if valid.
 	token *token.Token
+
+	// tokenRWLock is a read-write lock used to protect the token from concurrent access.
+	tokenRWLock sync.RWMutex
 
 	// identityProviderResponseParser is the parser used to parse the response from the identity provider.
 	// It`s ParseResponse method will be called to parse the response and return the token.
@@ -231,73 +170,41 @@ type entraidTokenManager struct {
 	// lowerBoundDuration is the lower bound for the refresh time in time.Duration.
 	lowerBoundDuration time.Duration
 
-	// closed is a channel that is closed when the token manager is closed.
+	// closedChan is a channel that is closedChan when the token manager is closedChan.
 	// It is used to signal the token manager to stop requesting tokens.
-	closed chan struct{}
+	closedChan chan struct{}
 }
 
 func (e *entraidTokenManager) GetToken(forceRefresh bool) (*token.Token, error) {
+	e.tokenRWLock.RLock()
 	// check if the manager is nil and if it is not expired
 	if !forceRefresh && e.token != nil && time.Now().Add(e.lowerBoundDuration).Before(e.token.ExpirationOn()) {
+		t := e.token.Copy()
+		e.tokenRWLock.RUnlock()
 		// copy the manager so the caller can't modify it
-		return e.token.Copy(), nil
+		return t, nil
 	}
+	e.tokenRWLock.RUnlock()
 
 	idpResult, err := e.idp.RequestToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to request manager from idp: %w", err)
 	}
 
-	token, err := e.identityProviderResponseParser.ParseResponse(idpResult)
+	t, err := e.identityProviderResponseParser.ParseResponse(idpResult)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manager: %w", err)
 	}
 
-	// copy the manager so the caller can't modify it
-	e.token = token.Copy()
-
-	if e.token == nil {
+	if t == nil {
 		return nil, fmt.Errorf("failed to get manager: manager is nil")
 	}
-	return token, nil
-}
+	e.tokenRWLock.Lock()
+	// copy the manager so the caller can't modify it
+	e.token = t.Copy()
+	e.tokenRWLock.Unlock()
 
-// CancelFunc is a function that cancels the token manager.
-type CancelFunc func() error
-
-// TokenListener is an interface that contains the methods for receiving updates from the token manager.
-// The token manager will call the listener's OnTokenNext method with the updated manager.
-// If an error occurs, the token manager will call the listener's OnTokenError method with the error.
-type TokenListener interface {
-	// OnTokenNext is called when the manager is updated.
-	OnTokenNext(token *token.Token)
-	// OnTokenError is called when an error occurs.
-	OnTokenError(err error)
-}
-
-func (e *entraidTokenManager) durationToRenewal() time.Duration {
-	if e.token == nil {
-		return 0
-	}
-	timeTillExpiration := time.Until(e.token.ExpirationOn())
-
-	// if the timeTillExpiration is less than the lower bound (or 0), return 0 to renew the manager NOW
-	if timeTillExpiration <= e.lowerBoundDuration || timeTillExpiration <= 0 {
-		return 0
-	}
-
-	// Calculate the time to renew the manager based on the expiration refresh ratio
-	// Since timeTillExpiration is guarded by the lower bound, we can safely multiply it by the ratio
-	// and assume the duration is a positive number
-	duration := time.Duration(float64(timeTillExpiration) * e.expirationRefreshRatio)
-
-	// if the duration will take us past the lower bound, return the duration to lower bound
-	if timeTillExpiration-e.lowerBoundDuration < duration {
-		return timeTillExpiration - e.lowerBoundDuration
-	}
-
-	// return the calculated duration
-	return duration
+	return t, nil
 }
 
 // Start starts the token manager and returns cancelFunc to stop the token manager.
@@ -311,24 +218,29 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 		return nil, ErrTokenManagerAlreadyStarted
 	}
 	e.listener = listener
-	e.closed = make(chan struct{})
+	if e.closedChan != nil && !internal.IsClosed(e.closedChan) {
+		// there is a hanging goroutine that is waiting for the closedChan to be closed
+		// if the closedChan is not nil and not closed, close it
+		close(e.closedChan)
+	}
+	e.closedChan = make(chan struct{})
 
-	token, err := e.GetToken(true)
+	t, err := e.GetToken(true)
 	if err != nil {
 		go listener.OnTokenError(err)
 		return nil, fmt.Errorf("failed to start token manager: %w", err)
 	}
 
-	go listener.OnTokenNext(token)
+	go listener.OnTokenNext(t)
 
-	go func(listener TokenListener) {
+	go func(listener TokenListener, closed <-chan struct{}) {
 		maxDelay := time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
 		initialDelay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
 		// Simulate manager refresh
 		for {
 			timeToRenewal := e.durationToRenewal()
 			select {
-			case <-e.closed:
+			case <-closed:
 				// Token manager is closed, stop the loop
 				// TODO(ndyakov): Discuss if we should call OnTokenError here
 				return
@@ -336,7 +248,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 				if timeToRenewal == 0 {
 					// Token was requested immediately, guard against infinite loop
 					select {
-					case <-e.closed:
+					case <-closed:
 						// Token manager is closed, stop the loop
 						// TODO(ndyakov): Discuss if we should call OnTokenError here
 						return
@@ -347,9 +259,9 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 				// Token is about to expire, refresh it
 				delay := initialDelay
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
-					token, err := e.GetToken(true)
+					t, err := e.GetToken(true)
 					if err == nil {
-						listener.OnTokenNext(token)
+						listener.OnTokenNext(t)
 						break
 					}
 					// check if err is retriable
@@ -371,7 +283,7 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 						}
 
 						select {
-						case <-e.closed:
+						case <-closed:
 							// Token manager is closed, stop the loop
 							// TODO(ndyakov): Discuss if we should call OnTokenError here
 							return
@@ -386,82 +298,56 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 				}
 			}
 		}
-	}(e.listener)
+	}(listener, e.closedChan)
 
 	return e.Close, nil
 }
 
-func (e *entraidTokenManager) Close() (err error) {
+// Close closes the token manager and releases any resources.
+func (e *entraidTokenManager) Close() error {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	if e.closed == nil || e.listener == nil {
-		err = ErrTokenManagerNotStarted
-		return
+	if e.closedChan == nil || e.listener == nil {
+		return ErrTokenManagerAlreadyCanceled
 	}
+
 	if e.listener != nil {
 		e.listener = nil
 	}
-	close(e.closed)
-	return
+	close(e.closedChan)
+
+	return nil
 }
 
-// defaultRetryableFunc is a function that checks if the error is retriable.
-// It takes an error as an argument and returns a boolean value.
-// The function checks if the error is a net.Error and if it is a timeout or temporary error.
-var defaultIsRetryable = func(err error) bool {
-	var netErr net.Error
-	if err == nil {
-		return true
+// durationToRenewal calculates the duration to the next token renewal.
+// It returns the duration to the next token renewal based on the expiration refresh ratio and the lower bound duration.
+// If the token is nil, it returns 0.
+// If the time till expiration is less than the lower bound duration, it returns 0 to renew the token now.
+func (e *entraidTokenManager) durationToRenewal() time.Duration {
+	e.tokenRWLock.RLock()
+	if e.token == nil {
+		e.tokenRWLock.RUnlock()
+		return 0
+	}
+	timeTillExpiration := time.Until(e.token.ExpirationOn())
+	e.tokenRWLock.RUnlock()
+
+	// if the timeTillExpiration is less than the lower bound (or 0), return 0 to renew the manager NOW
+	if timeTillExpiration <= e.lowerBoundDuration || timeTillExpiration <= 0 {
+		return 0
 	}
 
-	// nolint:staticcheck // SA1019 deprecated netErr.Temporary
-	if ok := errors.As(err, &netErr); ok {
-		return netErr.Timeout() || netErr.Temporary()
+	// Calculate the time to renew the manager based on the expiration refresh ratio
+	// Since timeTillExpiration is guarded by the lower bound, we can safely multiply it by the ratio
+	// and assume the duration is a positive number
+	duration := time.Duration(float64(timeTillExpiration) * e.expirationRefreshRatio)
+
+	// if the duration will take us past the lower bound, return the duration to lower bound
+	if timeTillExpiration-e.lowerBoundDuration < duration {
+		return timeTillExpiration - e.lowerBoundDuration
 	}
 
-	return errors.Is(err, os.ErrDeadlineExceeded)
-}
-
-// defaultRetryOptionsOr returns the default retry options if the provided options are not set.
-// It sets the maximum number of attempts, initial delay, maximum delay, and backoff multiplier.
-// The default values are 3 attempts, 1000 ms initial delay, 10000 ms maximum delay, and 2.0 backoff multiplier.
-// The values can be overridden by the user.
-func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
-	if retryOptions.IsRetryable == nil {
-		retryOptions.IsRetryable = defaultIsRetryable
-	}
-
-	if retryOptions.MaxAttempts <= 0 {
-		retryOptions.MaxAttempts = DefaultRetryOptionsMaxAttempts
-	}
-	if retryOptions.InitialDelayMs == 0 {
-		retryOptions.InitialDelayMs = DefaultRetryOptionsInitialDelayMs
-	}
-	if retryOptions.BackoffMultiplier == 0 {
-		retryOptions.BackoffMultiplier = DefaultRetryOptionsBackoffMultiplier
-	}
-	if retryOptions.MaxDelayMs == 0 {
-		retryOptions.MaxDelayMs = DefaultRetryOptionsMaxDelayMs
-	}
-	return retryOptions
-}
-
-// defaultIdentityProviderResponseParserOr returns the default manager parser if the provided manager parser is not set.
-// It sets the default manager parser to the defaultIdentityProviderResponseParser function.
-// The default manager parser is used to parse the raw manager and return a Token object.
-func defaultIdentityProviderResponseParserOr(idpResponseParser shared.IdentityProviderResponseParser) shared.IdentityProviderResponseParser {
-	if idpResponseParser == nil {
-		return &defaultIdentityProviderResponseParser{}
-	}
-	return idpResponseParser
-}
-
-func defaultTokenManagerOptionsOr(options TokenManagerOptions) TokenManagerOptions {
-	options.RetryOptions = defaultRetryOptionsOr(options.RetryOptions)
-	options.IdentityProviderResponseParser = defaultIdentityProviderResponseParserOr(options.IdentityProviderResponseParser)
-	if options.ExpirationRefreshRatio == 0 {
-		options.ExpirationRefreshRatio = DefaultExpirationRefreshRatio
-	}
-	return options
+	// return the calculated duration
+	return duration
 }

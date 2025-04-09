@@ -10,15 +10,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// write tests for azure_default_identity_provider.go
-// using the testing package
-// and the entraid package
-// and the github.com/stretchr/testify/assert package
-// and the github.com/Azure/azure-sdk-for-go/sdk/azidentity package
-// and the github.com/Azure/azure-sdk-for-go/sdk/azcore/policy package
-// and the github.com/Azure/azure-sdk-for-go/sdk/azcore package
-
 func TestNewDefaultAzureIdentityProvider(t *testing.T) {
+	t.Parallel()
 	// Create a new DefaultAzureIdentityProvider with default options
 	provider, err := NewDefaultAzureIdentityProvider(DefaultAzureIdentityProviderOptions{})
 	if err != nil {
@@ -37,7 +30,7 @@ func TestNewDefaultAzureIdentityProvider(t *testing.T) {
 	assert.Contains(t, provider.scopes, RedisScopeDefault, "provider should contain default scope")
 }
 func TestAzureDefaultIdentityProvider_RequestToken(t *testing.T) {
-	// Create a new DefaultAzureIdentityProvider with default options
+	t.Parallel()
 	provider, err := NewDefaultAzureIdentityProvider(DefaultAzureIdentityProviderOptions{})
 	if err != nil {
 		t.Fatalf("failed to create DefaultAzureIdentityProvider: %v", err)
