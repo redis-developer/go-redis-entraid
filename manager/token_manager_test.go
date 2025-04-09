@@ -356,18 +356,18 @@ func TestTokenManager_Start(t *testing.T) {
 			var last int32
 			wg := &sync.WaitGroup{}
 
+			idp.On("RequestToken").Return(rawResponse, nil)
+			mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+			listener.On("OnTokenNext", testTokenValid).Return()
 			numExecutions := 50000
 			for i := 0; i < numExecutions; i++ {
 				wg.Add(1)
 				go func(num int) {
 					defer wg.Done()
-					time.Sleep(time.Duration(int64(rand.Intn(1000)) * int64(time.Millisecond)))
+					time.Sleep(time.Duration(int64(rand.Intn(100)) * int64(time.Millisecond)))
 					if num%2 == 0 {
 						_ = tokenManager.Close()
 					} else {
-						idp.On("RequestToken").Return(rawResponse, nil)
-						mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
-						listener.On("OnTokenNext", testTokenValid).Return()
 						_, _ = tokenManager.Start(listener)
 					}
 					atomic.StoreInt32(&last, int32(num))
