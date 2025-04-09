@@ -681,7 +681,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 		// get token that expires before the lower bound
 		assert.NotPanics(t, func() {
 			expiresSoon := &public.AuthResult{
-				ExpiresOn: time.Now().Add(time.Duration(tm.lowerBoundDuration) - time.Minute).UTC(),
+				ExpiresOn: time.Now().Add(tm.lowerBoundDuration - time.Minute).UTC(),
 			}
 			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 				expiresSoon)
@@ -701,7 +701,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 		assert.NotPanics(t, func() {
 			tm.expirationRefreshRatio = 1
 			expiresAfterlb := &public.AuthResult{
-				ExpiresOn: time.Now().Add(time.Duration(tm.lowerBoundDuration) + time.Hour).UTC(),
+				ExpiresOn: time.Now().Add(tm.lowerBoundDuration + time.Hour).UTC(),
 			}
 			idpResponse, err := NewIDPResponse(ResponseTypeAuthResult,
 				expiresAfterlb)
