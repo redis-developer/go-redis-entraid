@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// testJWTToken is a JWT manager for testing
+// testJWTToken is a JWT token for testing
 //
 //	{
 //	 "iss": "test jwt",
@@ -25,7 +25,7 @@ import (
 // key: qwertyuiopasdfghjklzxcvbnm123456
 const testJWTToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0MzUxNTAxMSwiZXhwIjoxNzc1MDUxMDExLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.6RG721V2eFlSLsCRmo53kSRRrTZIe1UPdLZCUEvIarU"
 
-// testJWTExpiredToken is an expired JWT manager for testing
+// testJWTExpiredToken is an expired JWT token for testing
 //
 // {
 // "iss": "test jwt",
@@ -39,7 +39,7 @@ const testJWTToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3d
 // key: qwertyuiopasdfghjklzxcvbnm123456
 const testJWTExpiredToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTYxNzc5NTE0OCwiZXhwIjoxNjE3Nzk1MTQ4LCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.IbGPhHRiPYcpUDrhAPf4h3gH1XXBOu560NYT59rUMzc"
 
-// testJWTWithZeroExpiryToken is a JWT manager with zero expiry for testing
+// testJWTWithZeroExpiryToken is a JWT token with zero expiry for testing
 //
 // {
 // "iss": "test jwt",

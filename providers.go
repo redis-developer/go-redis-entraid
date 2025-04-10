@@ -13,11 +13,11 @@ import (
 // It is used to configure the streaming credentials provider when requesting a token with a token manager.
 type CredentialsProviderOptions struct {
 	// ClientID is the client ID of the identity.
-	// This is used to identify the identity when requesting a manager.
+	// This is used to identify the identity when requesting a token.
 	ClientID string
 
 	// TokenManagerOptions is the options for the token manager.
-	// This is used to configure the token manager when requesting a manager.
+	// This is used to configure the token manager when requesting a token.
 	TokenManagerOptions manager.TokenManagerOptions
 
 	// OnReAuthenticationError is a callback function that is called when a re-authentication error occurs.
@@ -51,12 +51,12 @@ func (o *CredentialsProviderOptions) getTokenManagerFactory() func(shared.Identi
 // ManagedIdentityCredentialsProviderOptions is a struct that holds the options for the managed identity credentials provider.
 type ManagedIdentityCredentialsProviderOptions struct {
 	// CredentialsProviderOptions is the options for the credentials provider.
-	// This is used to configure the credentials provider when requesting a manager.
+	// This is used to configure the credentials provider when requesting a token.
 	// It is used to specify the client ID, tenant ID, and scopes for the identity.
 	CredentialsProviderOptions
 
 	// ManagedIdentityProviderOptions is the options for the managed identity provider.
-	// This is used to configure the managed identity provider when requesting a manager.
+	// This is used to configure the managed identity provider when requesting a token.
 	identity.ManagedIdentityProviderOptions
 }
 
@@ -87,14 +87,14 @@ func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsPro
 }
 
 // ConfidentialCredentialsProviderOptions is a struct that holds the options for the confidential credentials provider.
-// It is used to configure the credentials provider when requesting a manager.
+// It is used to configure the credentials provider when requesting a token.
 type ConfidentialCredentialsProviderOptions struct {
 	// CredentialsProviderOptions is the options for the credentials provider.
-	// This is used to configure the credentials provider when requesting a manager.
+	// This is used to configure the credentials provider when requesting a token.
 	CredentialsProviderOptions
 
 	// ConfidentialIdentityProviderOptions is the options for the confidential identity provider.
-	// This is used to configure the identity provider when requesting a manager.
+	// This is used to configure the identity provider when requesting a token.
 	identity.ConfidentialIdentityProviderOptions
 }
 
@@ -123,7 +123,7 @@ func NewConfidentialCredentialsProvider(options ConfidentialCredentialsProviderO
 }
 
 // DefaultAzureCredentialsProviderOptions is a struct that holds the options for the default azure credentials provider.
-// It is used to configure the credentials provider when requesting a manager.
+// It is used to configure the credentials provider when requesting a token.
 type DefaultAzureCredentialsProviderOptions struct {
 	CredentialsProviderOptions
 	identity.DefaultAzureIdentityProviderOptions
@@ -132,7 +132,7 @@ type DefaultAzureCredentialsProviderOptions struct {
 // NewDefaultAzureCredentialsProvider creates a new default azure credentials provider.
 // It uses the default azure identity provider to authenticate with the identity provider.
 // The default azure identity provider is a special type of identity provider that uses the default azure identity to authenticate.
-// It is used to authenticate with the identity provider when requesting a manager.
+// It is used to authenticate with the identity provider when requesting a token.
 func NewDefaultAzureCredentialsProvider(options DefaultAzureCredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {
 	// Create a new identity provider using the default azure identity type.
 	idp, err := identity.NewDefaultAzureIdentityProvider(options.DefaultAzureIdentityProviderOptions)

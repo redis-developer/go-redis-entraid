@@ -75,7 +75,7 @@ func TestCopyToken(t *testing.T) {
 	assert.Equal(t, token.expiresOn, copiedToken.expiresOn)
 	assert.Equal(t, token.receivedAt, copiedToken.receivedAt)
 
-	// change the copied manager
+	// change the copied token
 	copiedToken.expiresOn = time.Now().Add(-1 * time.Hour)
 	assert.NotEqual(t, token.expiresOn, copiedToken.expiresOn)
 
@@ -105,7 +105,7 @@ func TestTokenCompare(t *testing.T) {
 	assert.False(t, token1.compareRawCredentials(token3))
 	assert.False(t, token1.compareToken(token3))
 
-	// Create manager with same credentials but different rawCredentials
+	// Create token with same credentials but different rawCredentials
 	token4 := New("username", "password", "differentRawToken", time.Now(), time.Now(), 3600)
 	assert.False(t, token1.compareRawCredentials(token4))
 	assert.False(t, token1.compareToken(token4))

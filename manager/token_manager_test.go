@@ -528,7 +528,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, token1)
 	})
-	t.Run("Default IdentityProviderResponseParser with expired manager", func(t *testing.T) {
+	t.Run("Default IdentityProviderResponseParser with expired token", func(t *testing.T) {
 		t.Parallel()
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
@@ -540,7 +540,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, token1)
 	})
-	t.Run("Default IdentityProviderResponseParser with manager that expired", func(t *testing.T) {
+	t.Run("Default IdentityProviderResponseParser with token that expired", func(t *testing.T) {
 		t.Parallel()
 		authResult := &public.AuthResult{
 			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
@@ -618,7 +618,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.Nil(t, cancel)
 		assert.Nil(t, tm.listener)
 	})
-	t.Run("GetToken with expired manager", func(t *testing.T) {
+	t.Run("GetToken with expired token", func(t *testing.T) {
 		t.Parallel()
 		idp := &mockIdentityProvider{}
 		tokenManager, err := NewTokenManager(idp,
@@ -644,7 +644,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		assert.Nil(t, token1)
 	})
 
-	t.Run("GetToken with nil manager", func(t *testing.T) {
+	t.Run("GetToken with nil token", func(t *testing.T) {
 		t.Parallel()
 		idp := &mockIdentityProvider{}
 		tokenManager, err := NewTokenManager(idp,
@@ -725,10 +725,10 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 		assert.True(t, ok)
 
 		result := tm.durationToRenewal()
-		// returns 0 for nil manager
+		// returns 0 for nil token
 		assert.Equal(t, time.Duration(0), result)
 
-		// get manager that expires before the lower bound
+		// get token that expires before the lower bound
 		assert.NotPanics(t, func() {
 			expiresSoon := &public.AuthResult{
 				ExpiresOn: time.Now().Add(tm.lowerBoundDuration - time.Minute).UTC(),
@@ -747,7 +747,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 			assert.Equal(t, time.Duration(0), result)
 		})
 
-		// get manager that expires after the lower bound and expirationRefreshRatio to 1
+		// get token that expires after the lower bound and expirationRefreshRatio to 1
 		assert.NotPanics(t, func() {
 			tm.expirationRefreshRatio = 1
 			expiresAfterlb := &public.AuthResult{
@@ -898,7 +898,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
 
-	t.Run("Start and Listen with 0 renewal duration and closing the manager", func(t *testing.T) {
+	t.Run("Start and Listen with 0 renewal duration and closing the token", func(t *testing.T) {
 		t.Parallel()
 		idp := &mockIdentityProvider{}
 		listener := &mockTokenListener{}

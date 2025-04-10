@@ -4,19 +4,19 @@ import "fmt"
 
 const (
 	// AuthorityTypeDefault is the default authority type.
-	// This is used to specify the authority type when requesting a manager.
+	// This is used to specify the authority type when requesting a token.
 	AuthorityTypeDefault = "default"
 	// AuthorityTypeMultiTenant is the multi-tenant authority type.
-	// This is used to specify the multi-tenant authority type when requesting a manager.
-	// This type of authority is used to authenticate the identity when requesting a manager.
+	// This is used to specify the multi-tenant authority type when requesting a token.
+	// This type of authority is used to authenticate the identity when requesting a token.
 	AuthorityTypeMultiTenant = "multi-tenant"
 	// AuthorityTypeCustom is the custom authority type.
-	// This is used to specify the custom authority type when requesting a manager.
+	// This is used to specify the custom authority type when requesting a token.
 	AuthorityTypeCustom = "custom"
 )
 
 // AuthorityConfiguration represents the authority configuration for the identity provider.
-// It is used to configure the authority type and authority URL when requesting a manager.
+// It is used to configure the authority type and authority URL when requesting a token.
 type AuthorityConfiguration struct {
 	// AuthorityType is the type of authority used to authenticate with the identity provider.
 	// This can be either "default", "multi-tenant", or "custom".
@@ -28,7 +28,7 @@ type AuthorityConfiguration struct {
 	Authority string
 
 	// TenantID is the tenant ID of the identity provider.
-	// This is used to identify the tenant when requesting a manager.
+	// This is used to identify the tenant when requesting a token.
 	// This is typically the ID of the Azure Active Directory tenant.
 	TenantID string
 }

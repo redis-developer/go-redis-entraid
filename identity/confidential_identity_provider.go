@@ -27,7 +27,7 @@ type ConfidentialIdentityProviderOptions struct {
 	// ClientPrivateKey is the private key used to authenticate with the identity provider.
 	ClientPrivateKey crypto.PrivateKey
 
-	// Scopes is the list of scopes used to request a manager from the identity provider.
+	// Scopes is the list of scopes used to request a token from the identity provider.
 	Scopes []string
 
 	// Authority is the authority used to authenticate with the identity provider.
@@ -46,10 +46,10 @@ type ConfidentialIdentityProvider struct {
 	// credential is the credential used to authenticate with the identity provider.
 	credential confidential.Credential
 
-	// scopes is the list of scopes used to request a manager from the identity provider.
+	// scopes is the list of scopes used to request a token from the identity provider.
 	scopes []string
 
-	// client confidential is the client used to request a manager from the identity provider.
+	// client confidential is the client used to request a token from the identity provider.
 	client confidentialTokenClient
 }
 
@@ -81,7 +81,7 @@ func (d *defaultConfidentialCredFactory) NewCredFromCert(clientCert []*x509.Cert
 }
 
 // NewConfidentialIdentityProvider creates a new confidential identity provider.
-// It is used to configure the identity provider when requesting a manager.
+// It is used to configure the identity provider when requesting a token.
 // It is used to specify the client ID, tenant ID, and scopes for the identity.
 // It is also used to specify the type of credentials used to authenticate with the identity provider.
 // The credentials can be either a client secret or a client certificate.
@@ -153,7 +153,7 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 	}, nil
 }
 
-// RequestToken requests a manager from the identity provider.
+// RequestToken requests a token from the identity provider.
 // It returns the identity provider response, including the auth result.
 func (c *ConfidentialIdentityProvider) RequestToken() (shared.IdentityProviderResponse, error) {
 	if c.client == nil {

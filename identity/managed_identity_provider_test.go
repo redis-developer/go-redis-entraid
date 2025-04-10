@@ -174,7 +174,7 @@ func TestRequestToken_ErrorCases(t *testing.T) {
 				m.On("AcquireToken", mock.Anything, RedisResource).
 					Return(public.AuthResult{}, errors.New("failed to acquire token"))
 			},
-			expectedError: "coudn't acquire manager: failed to acquire token",
+			expectedError: "coudn't acquire token: failed to acquire token",
 		},
 		{
 			name: "AcquireToken fails with custom resource",
@@ -186,7 +186,7 @@ func TestRequestToken_ErrorCases(t *testing.T) {
 				m.On("AcquireToken", mock.Anything, "custom-resource").
 					Return(public.AuthResult{}, errors.New("failed to acquire token"))
 			},
-			expectedError: "coudn't acquire manager: failed to acquire token",
+			expectedError: "coudn't acquire token: failed to acquire token",
 		},
 		{
 			name: "AcquireToken fails with invalid resource",
@@ -198,7 +198,7 @@ func TestRequestToken_ErrorCases(t *testing.T) {
 				m.On("AcquireToken", mock.Anything, "invalid-resource").
 					Return(public.AuthResult{}, errors.New("invalid resource"))
 			},
-			expectedError: "coudn't acquire manager: invalid resource",
+			expectedError: "coudn't acquire token: invalid resource",
 		},
 	}
 

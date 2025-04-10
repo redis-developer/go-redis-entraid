@@ -12,14 +12,14 @@ import (
 const (
 	// ResponseTypeAuthResult is the type of the auth result.
 	ResponseTypeAuthResult = "AuthResult"
-	// ResponseTypeAccessToken is the type of the access manager.
+	// ResponseTypeAccessToken is the type of the access token.
 	ResponseTypeAccessToken = "AccessToken"
 	// ResponseTypeRawToken is the type of the response when you have a raw string.
 	ResponseTypeRawToken = "RawToken"
 )
 
 // IdentityProviderResponseParser is an interface that defines the methods for parsing the identity provider response.
-// It is used to parse the response from the identity provider and extract the manager.
+// It is used to parse the response from the identity provider and extract the token.
 // If not provided, the default implementation will be used.
 type IdentityProviderResponseParser interface {
 	ParseResponse(response IdentityProviderResponse) (*token.Token, error)
@@ -36,11 +36,11 @@ type IdentityProviderResponse interface {
 }
 
 // IdentityProvider is an interface that defines the methods for an identity provider.
-// It is used to request a manager for authentication.
-// The identity provider is responsible for providing the raw authentication manager.
+// It is used to request a token for authentication.
+// The identity provider is responsible for providing the raw authentication token.
 type IdentityProvider interface {
-	// RequestToken requests a manager from the identity provider.
-	// It returns the manager, the expiration time, and an error if any.
+	// RequestToken requests a token from the identity provider.
+	// It returns the token, the expiration time, and an error if any.
 	RequestToken() (IdentityProviderResponse, error)
 }
 

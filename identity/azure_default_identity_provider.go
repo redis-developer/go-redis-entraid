@@ -14,7 +14,7 @@ import (
 type DefaultAzureIdentityProviderOptions struct {
 	// AzureOptions is the options used to configure the Azure identity provider.
 	AzureOptions *azidentity.DefaultAzureCredentialOptions
-	// Scopes is the list of scopes used to request a manager from the identity provider.
+	// Scopes is the list of scopes used to request a token from the identity provider.
 	Scopes []string
 
 	// credFactory is a factory for creating the default Azure credential.
@@ -56,8 +56,8 @@ func NewDefaultAzureIdentityProvider(opts DefaultAzureIdentityProviderOptions) (
 	}, nil
 }
 
-// RequestToken requests a manager from the Azure Default Identity provider.
-// It returns the manager, the expiration time, and an error if any.
+// RequestToken requests a token from the Azure Default Identity provider.
+// It returns the token, the expiration time, and an error if any.
 func (a *DefaultAzureIdentityProvider) RequestToken() (shared.IdentityProviderResponse, error) {
 	credFactory := a.credFactory
 	if credFactory == nil {
@@ -70,7 +70,7 @@ func (a *DefaultAzureIdentityProvider) RequestToken() (shared.IdentityProviderRe
 
 	token, err := cred.GetToken(context.TODO(), policy.TokenRequestOptions{Scopes: a.scopes})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get manager: %w", err)
+		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
 	return shared.NewIDPResponse(shared.ResponseTypeAccessToken, &token)

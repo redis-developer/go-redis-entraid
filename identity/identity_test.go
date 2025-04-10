@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// testJWTToken is a JWT manager for testing
+// testJWTToken is a JWT token for testing
 //
 //	{
 //	 "iss": "test jwt",

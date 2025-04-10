@@ -26,11 +26,11 @@ type entraidCredentialsProvider struct {
 	rwLock sync.RWMutex
 }
 
-// onTokenNext is a method that is called when the token manager receives a new manager.
+// onTokenNext is a method that is called when the token manager receives a new token.
 func (e *entraidCredentialsProvider) onTokenNext(t *token.Token) {
 	e.rwLock.RLock()
 	defer e.rwLock.RUnlock()
-	// Notify all listeners with the new manager.
+	// Notify all listeners with the new token.
 	for _, listener := range e.listeners {
 		listener.OnNext(t)
 	}
@@ -64,7 +64,7 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 	}
 
 	if !alreadySubscribed {
-		// Get the manager from the identity provider.
+		// add new listener
 		e.listeners = append(e.listeners, listener)
 	}
 	e.rwLock.Unlock()
@@ -105,7 +105,7 @@ func (e *entraidCredentialsProvider) Subscribe(listener auth.CredentialsListener
 
 // newCredentialsProvider creates a new credentials provider.
 // It takes a TokenManager and CredentialProviderOptions as arguments and returns a StreamingCredentialsProvider interface.
-// The TokenManager is used to obtain the manager, and the CredentialProviderOptions contains options for the credentials provider.
+// The TokenManager is used to obtain the token, and the CredentialProviderOptions contains options for the credentials provider.
 // The credentials provider is responsible for managing the credentials and refreshing them when necessary.
 // It returns an error if the token manager cannot be started.
 func newCredentialsProvider(tokenManager manager.TokenManager, options CredentialsProviderOptions) (auth.StreamingCredentialsProvider, error) {

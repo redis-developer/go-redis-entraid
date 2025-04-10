@@ -61,9 +61,9 @@ func defaultRetryOptionsOr(retryOptions RetryOptions) RetryOptions {
 	return retryOptions
 }
 
-// defaultIdentityProviderResponseParserOr returns the default manager parser if the provided manager parser is not set.
-// It sets the default manager parser to the defaultIdentityProviderResponseParser function.
-// The default manager parser is used to parse the raw manager and return a Token object.
+// defaultIdentityProviderResponseParserOr returns the default token parser if the provided token parser is not set.
+// It sets the default token parser to the defaultIdentityProviderResponseParser function.
+// The default token parser is used to parse the raw token and return a Token object.
 func defaultIdentityProviderResponseParserOr(idpResponseParser shared.IdentityProviderResponseParser) shared.IdentityProviderResponseParser {
 	if idpResponseParser == nil {
 		return &defaultIdentityProviderResponseParser{}
@@ -82,9 +82,9 @@ func defaultTokenManagerOptionsOr(options TokenManagerOptions) TokenManagerOptio
 
 type defaultIdentityProviderResponseParser struct{}
 
-// ParseResponse parses the response from the identity provider and extracts the manager.
+// ParseResponse parses the response from the identity provider and extracts the token.
 // It takes an IdentityProviderResponse as an argument and returns a Token and an error if any.
-// The IdentityProviderResponse contains the raw manager and the expiration time.
+// The IdentityProviderResponse contains the raw token and the expiration time.
 func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.IdentityProviderResponse) (*token.Token, error) {
 	var username, password, rawToken string
 	var expiresOn time.Time
@@ -106,7 +106,7 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 		if response.Type() == shared.ResponseTypeAccessToken {
 			accessToken := response.AccessToken()
 			if accessToken.Token == "" {
-				return nil, fmt.Errorf("access manager is empty")
+				return nil, fmt.Errorf("access token is empty")
 			}
 			token = accessToken.Token
 			expiresOn = accessToken.ExpiresOn.UTC()
@@ -117,10 +117,10 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 			Oid string `json:"oid,omitempty"`
 		}{}
 
-		// jwt manager should be verified from the identity provider
+		// jwt token should be verified from the identity provider
 		_, _, err := jwt.NewParser().ParseUnverified(token, &claims)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse jwt manager: %w", err)
+			return nil, fmt.Errorf("failed to parse jwt token: %w", err)
 		}
 		rawToken = token
 		username = claims.Oid
@@ -144,7 +144,7 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 		return nil, fmt.Errorf("expires on is in the past")
 	}
 
-	// parse manager as jwt manager and get claims
+	// parse token as jwt token and get claims
 	return token.New(
 		username,
 		password,

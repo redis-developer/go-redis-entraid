@@ -14,12 +14,12 @@ const (
 	ClientCertificateCredentialType = "ClientCertificate"
 
 	// RedisScopeDefault is the default scope for Redis.
-	// This is used to specify the scope that the identity has access to when requesting a manager.
+	// This is used to specify the scope that the identity has access to when requesting a token.
 	// The scope is typically the URL of the resource that the identity has access to.
 	RedisScopeDefault = "https://redis.azure.com/.default"
 
 	// RedisResource is the default resource for Redis.
-	// This is used to specify the resource that the identity has access to when requesting a manager.
+	// This is used to specify the resource that the identity has access to when requesting a token.
 	// The resource is typically the URL of the resource that the identity has access to.
 	RedisResource = "https://redis.azure.com"
 )
