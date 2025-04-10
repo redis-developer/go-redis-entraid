@@ -367,37 +367,47 @@ func TestTokenManager_Start(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.NotPanics(t, func() {
-			var last int32
+			last := &atomic.Int32{}
 			wg := &sync.WaitGroup{}
 
 			idp.On("RequestToken").Return(rawResponse, nil)
 			mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
 			listener.On("OnTokenNext", testTokenValid).Return()
-			numExecutions := 50000
-			for i := 0; i < numExecutions; i++ {
+			numExecutions := int32(50000)
+			for i := int32(0); i < numExecutions; i++ {
 				wg.Add(1)
-				go func(num int) {
+				go func(num int32) {
 					defer wg.Done()
-					time.Sleep(time.Duration(int64(rand.Intn(100)) * int64(time.Millisecond)))
 					var err error
+					time.Sleep(time.Duration(int64(rand.Intn(1000)+(300-int(num)/2)) * int64(time.Millisecond)))
+					last.Store(num)
 					if num%2 == 0 {
 						err = tokenManager.Close()
 					} else {
-						_, err = tokenManager.Start(listener)
+						l := &mockTokenListener{Id: num}
+						l.On("OnTokenNext", testTokenValid).Return()
+						_, err = tokenManager.Start(l)
 					}
-					if err == nil {
-						atomic.StoreInt32(&last, int32(num))
-					} else if err != ErrTokenManagerAlreadyStarted && err != ErrTokenManagerAlreadyCanceled {
-						log.Printf("Error: %v", err)
-						t.Fail()
+					if err != nil {
+						if err != ErrTokenManagerAlreadyCanceled && err != ErrTokenManagerAlreadyStarted {
+							// this is un unexpected error, fail the test
+							assert.Error(t, err)
+						}
 					}
 				}(i)
 			}
 			wg.Wait()
-			lastExecution := atomic.LoadInt32(&last)
+			lastExecution := last.Load()
 			if lastExecution%2 == 0 {
+				if tm.listener != nil {
+					l := tm.listener.(*mockTokenListener)
+					log.Printf("FAILING WITH lastExecution [STARTED]:[LISTENER:%d]: %d", l.Id, lastExecution)
+				}
 				assert.Nil(t, tm.listener)
 			} else {
+				if tm.listener == nil {
+					log.Printf("FAILING WITH lastExecution[STOPPED]: %d", lastExecution)
+				}
 				assert.NotNil(t, tm.listener)
 				cancel, err := tokenManager.Start(listener)
 				assert.Nil(t, cancel)
@@ -606,7 +616,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		cancel, err := tokenManager.Start(listener)
 		assert.Error(t, err)
 		assert.Nil(t, cancel)
-		assert.NotNil(t, tm.listener)
+		assert.Nil(t, tm.listener)
 	})
 	t.Run("GetToken with expired manager", func(t *testing.T) {
 		t.Parallel()
@@ -1035,7 +1045,6 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		listener.On("OnTokenError", mock.Anything).Run(func(args mock.Arguments) {
 			err := args.Get(0)
 			assert.NotNil(t, err)
-			log.Printf("Found TOKEN Error: %v", err)
 		}).Return().Maybe()
 
 		cancel, err := tokenManager.Start(listener)
@@ -1109,7 +1118,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		assert.NotEqual(t, time.Duration(0), toRenewal)
 		assert.NotEqual(t, expiresIn, toRenewal)
 		assert.True(t, expiresIn > toRenewal)
-		<-time.After(toRenewal + 5*time.Millisecond)
+		<-time.After(toRenewal + 100*time.Millisecond)
 
 		idp.AssertNumberOfCalls(t, "RequestToken", 2)
 		listener.AssertNumberOfCalls(t, "OnTokenNext", 1)

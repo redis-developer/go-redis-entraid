@@ -114,7 +114,7 @@ func NewTokenManager(idp shared.IdentityProvider, options TokenManagerOptions) (
 	return &entraidTokenManager{
 		idp:                            idp,
 		token:                          nil,
-		closedChan:                     make(chan struct{}),
+		closedChan:                     nil,
 		expirationRefreshRatio:         options.ExpirationRefreshRatio,
 		lowerRefreshBoundMs:            options.LowerRefreshBoundMs,
 		lowerBoundDuration:             time.Duration(options.LowerRefreshBoundMs) * time.Millisecond,
@@ -217,13 +217,12 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 	if e.listener != nil {
 		return nil, ErrTokenManagerAlreadyStarted
 	}
-	e.listener = listener
+
 	if e.closedChan != nil && !internal.IsClosed(e.closedChan) {
 		// there is a hanging goroutine that is waiting for the closedChan to be closed
 		// if the closedChan is not nil and not closed, close it
 		close(e.closedChan)
 	}
-	e.closedChan = make(chan struct{})
 
 	t, err := e.GetToken(true)
 	if err != nil {
@@ -232,6 +231,9 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 	}
 
 	go listener.OnTokenNext(t)
+
+	e.closedChan = make(chan struct{})
+	e.listener = listener
 
 	go func(listener TokenListener, closed <-chan struct{}) {
 		maxDelay := time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
@@ -311,10 +313,7 @@ func (e *entraidTokenManager) Close() error {
 	if e.closedChan == nil || e.listener == nil {
 		return ErrTokenManagerAlreadyCanceled
 	}
-
-	if e.listener != nil {
-		e.listener = nil
-	}
+	e.listener = nil
 	close(e.closedChan)
 
 	return nil

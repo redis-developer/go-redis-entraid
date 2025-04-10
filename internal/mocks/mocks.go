@@ -133,6 +133,7 @@ var _ net.Error = (*Error)(nil)
 type TokenListener struct {
 	// Mock implementation of the TokenManagerListener interface
 	mock.Mock
+	Id int32
 }
 
 func (m *TokenListener) OnTokenNext(token *token.Token) {
