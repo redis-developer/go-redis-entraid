@@ -5,6 +5,7 @@ import (
 
 	"github.com/redis-developer/go-redis-entraid/identity"
 	"github.com/redis-developer/go-redis-entraid/manager"
+	"github.com/redis-developer/go-redis-entraid/shared"
 	"github.com/redis/go-redis/v9/auth"
 )
 
@@ -24,6 +25,25 @@ type CredentialsProviderOptions struct {
 
 	// OnRetryableError is a callback function that is called when a retriable error occurs.
 	OnRetryableError func(error) error
+
+	// tokenManagerFactory is a private field that can be injected from within the package.
+	// It is used to create a token manager for the credentials provider.
+	tokenManagerFactory func(shared.IdentityProvider, manager.TokenManagerOptions) (manager.TokenManager, error)
+}
+
+// defaultTokenManagerFactory is the default implementation of the token manager factory.
+// It creates a new token manager using the provided identity provider and options.
+func defaultTokenManagerFactory(provider shared.IdentityProvider, options manager.TokenManagerOptions) (manager.TokenManager, error) {
+	return manager.NewTokenManager(provider, options)
+}
+
+// getTokenManagerFactory returns the token manager factory to use.
+// If no factory is provided, it returns the default implementation.
+func (o *CredentialsProviderOptions) getTokenManagerFactory() func(shared.IdentityProvider, manager.TokenManagerOptions) (manager.TokenManager, error) {
+	if o.tokenManagerFactory == nil {
+		return defaultTokenManagerFactory
+	}
+	return o.tokenManagerFactory
 }
 
 // Managed identity type
@@ -53,7 +73,7 @@ func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsPro
 	}
 
 	// Create a new token manager using the identity provider.
-	tokenManager, err := manager.NewTokenManager(idp, options.TokenManagerOptions)
+	tokenManager, err := options.getTokenManagerFactory()(idp, options.TokenManagerOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create token manager: %w", err)
 	}
@@ -89,7 +109,7 @@ func NewConfidentialCredentialsProvider(options ConfidentialCredentialsProviderO
 	}
 
 	// Create a new token manager using the identity provider.
-	tokenManager, err := manager.NewTokenManager(idp, options.TokenManagerOptions)
+	tokenManager, err := options.getTokenManagerFactory()(idp, options.TokenManagerOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create token manager: %w", err)
 	}
@@ -121,7 +141,7 @@ func NewDefaultAzureCredentialsProvider(options DefaultAzureCredentialsProviderO
 	}
 
 	// Create a new token manager using the identity provider.
-	tokenManager, err := manager.NewTokenManager(idp, options.TokenManagerOptions)
+	tokenManager, err := options.getTokenManagerFactory()(idp, options.TokenManagerOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create token manager: %w", err)
 	}
@@ -132,5 +152,4 @@ func NewDefaultAzureCredentialsProvider(options DefaultAzureCredentialsProviderO
 		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
 	}
 	return credentialsProvider, nil
-
 }

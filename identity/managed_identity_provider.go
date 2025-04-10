@@ -6,8 +6,17 @@ import (
 	"fmt"
 
 	mi "github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/redis-developer/go-redis-entraid/shared"
 )
+
+// ManagedIdentityClient is an interface that defines the methods for a managed identity client.
+// It is used to acquire a token using the managed identity.
+type ManagedIdentityClient interface {
+	// AcquireToken acquires a token using the managed identity.
+	// It returns the token and an error if any.
+	AcquireToken(ctx context.Context, resource string, opts ...mi.AcquireTokenOption) (public.AuthResult, error)
+}
 
 // ManagedIdentityProviderOptions represents the options for the managed identity provider.
 // It is used to configure the identity provider when requesting a manager.
@@ -38,14 +47,22 @@ type ManagedIdentityProvider struct {
 	scopes []string
 
 	// client is the managed identity client used to request a manager.
-	client *mi.Client
+	client ManagedIdentityClient
+}
+
+// realManagedIdentityClient is a wrapper around the real mi.Client that implements our interface
+type realManagedIdentityClient struct {
+	client mi.Client
+}
+
+func (c *realManagedIdentityClient) AcquireToken(ctx context.Context, resource string, opts ...mi.AcquireTokenOption) (public.AuthResult, error) {
+	return c.client.AcquireToken(ctx, resource, opts...)
 }
 
 // NewManagedIdentityProvider creates a new managed identity provider for Azure with managed identity.
 // It is used to configure the identity provider when requesting a manager.
 func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedIdentityProvider, error) {
-	var client mi.Client
-	var err error
+	var client ManagedIdentityClient
 
 	if opts.ManagedIdentityType != SystemAssignedIdentity && opts.ManagedIdentityType != UserAssignedIdentity {
 		return nil, errors.New("invalid managed identity type")
@@ -56,25 +73,29 @@ func NewManagedIdentityProvider(opts ManagedIdentityProviderOptions) (*ManagedId
 		// SystemAssignedIdentity is the type of identity that is automatically managed by Azure.
 		// This type of identity is automatically created and managed by Azure.
 		// It is used to authenticate the identity when requesting a manager.
-		client, err = mi.New(mi.SystemAssigned())
+		miClient, err := mi.New(mi.SystemAssigned())
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create managed identity client: %w", err)
+		}
+		client = &realManagedIdentityClient{client: miClient}
 	case UserAssignedIdentity:
 		// UserAssignedIdentity is required to be specified when using a user assigned identity.
 		if opts.UserAssignedClientID == "" {
 			return nil, errors.New("user assigned client ID is required when using user assigned identity")
 		}
 		// UserAssignedIdentity is the type of identity that is managed by the user.
-		client, err = mi.New(mi.UserAssignedClientID(opts.UserAssignedClientID))
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create managed identity client: %w", err)
+		miClient, err := mi.New(mi.UserAssignedClientID(opts.UserAssignedClientID))
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create managed identity client: %w", err)
+		}
+		client = &realManagedIdentityClient{client: miClient}
 	}
 
 	return &ManagedIdentityProvider{
 		userAssignedClientID: opts.UserAssignedClientID,
 		managedIdentityType:  opts.ManagedIdentityType,
 		scopes:               opts.Scopes,
-		client:               &client,
+		client:               client,
 	}, nil
 }
 
