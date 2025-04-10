@@ -52,7 +52,7 @@ type ManagedIdentityProvider struct {
 
 // realManagedIdentityClient is a wrapper around the real mi.Client that implements our interface
 type realManagedIdentityClient struct {
-	client mi.Client
+	client ManagedIdentityClient
 }
 
 func (c *realManagedIdentityClient) AcquireToken(ctx context.Context, resource string, opts ...mi.AcquireTokenOption) (public.AuthResult, error) {

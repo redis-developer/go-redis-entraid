@@ -2,6 +2,7 @@ package entraid
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -503,4 +504,97 @@ func TestCredentialsProviderInterface(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestCredentialsProviderSubscribe(t *testing.T) {
+	// Create a test token
+	testToken := token.New(
+		"test",
+		"test",
+		"mock-token",
+		time.Now().Add(time.Hour),
+		time.Now(),
+		int64(time.Hour),
+	)
+
+	// Create a test provider
+	options := ConfidentialCredentialsProviderOptions{
+		CredentialsProviderOptions: CredentialsProviderOptions{
+			ClientID: "test-client-id",
+			TokenManagerOptions: manager.TokenManagerOptions{
+				ExpirationRefreshRatio: 0.7,
+			},
+		},
+		ConfidentialIdentityProviderOptions: identity.ConfidentialIdentityProviderOptions{
+			ClientID:        "test-client-id",
+			CredentialsType: identity.ClientSecretCredentialType,
+			ClientSecret:    "test-secret",
+			Scopes:          []string{identity.RedisScopeDefault},
+			Authority:       identity.AuthorityConfiguration{},
+		},
+	}
+
+	// Set the token manager factory in the options
+	options.tokenManagerFactory = testTokenManagerFactory(testToken, nil)
+
+	provider, err := NewConfidentialCredentialsProvider(options)
+	require.NoError(t, err)
+	require.NotNil(t, provider)
+
+	t.Run("concurrent subscribe and cancel", func(t *testing.T) {
+		const numListeners = 10
+		var wg sync.WaitGroup
+		listeners := make([]*mockCredentialsListener, numListeners)
+		cancels := make([]auth.CancelProviderFunc, numListeners)
+
+		// Subscribe multiple listeners concurrently
+		for i := 0; i < numListeners; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				listener := &mockCredentialsListener{
+					LastTokenCh: make(chan string, 1),
+					LastErrCh:   make(chan error, 1),
+				}
+				listeners[idx] = listener
+				_, cancel, err := provider.Subscribe(listener)
+				require.NoError(t, err)
+				cancels[idx] = cancel
+			}(i)
+		}
+		wg.Wait()
+
+		// Verify all listeners received the token
+		for i, listener := range listeners {
+			select {
+			case token := <-listener.LastTokenCh:
+				assert.Equal(t, "mock-token", token, "listener %d received wrong token", i)
+			case err := <-listener.LastErrCh:
+				t.Fatalf("listener %d received error: %v", i, err)
+			}
+		}
+
+		// Cancel all subscriptions concurrently
+		for i := 0; i < numListeners; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				err := cancels[idx]()
+				require.NoError(t, err)
+			}(i)
+		}
+		wg.Wait()
+
+		// Verify no more tokens are sent after cancellation
+		for i, listener := range listeners {
+			select {
+			case token := <-listener.LastTokenCh:
+				t.Fatalf("listener %d received unexpected token after cancellation: %s", i, token)
+			case err := <-listener.LastErrCh:
+				t.Fatalf("listener %d received unexpected error after cancellation: %v", i, err)
+			default:
+				// No message received, which is expected
+			}
+		}
+	})
 }

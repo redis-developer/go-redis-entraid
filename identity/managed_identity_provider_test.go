@@ -216,3 +216,90 @@ func TestRequestToken_ErrorCases(t *testing.T) {
 		})
 	}
 }
+
+// MockMIClient is a mock implementation of the mi.Client interface
+type MockMIClient struct {
+	mock.Mock
+}
+
+func (m *MockMIClient) AcquireToken(ctx context.Context, resource string, opts ...mi.AcquireTokenOption) (public.AuthResult, error) {
+	args := m.Called(ctx, resource)
+	return args.Get(0).(public.AuthResult), args.Error(1)
+}
+
+func (m *MockMIClient) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func TestRealManagedIdentityClient(t *testing.T) {
+	// Create a mock managed identity client
+	mockMIClient := new(MockManagedIdentityClient)
+	client := &realManagedIdentityClient{client: mockMIClient}
+
+	tests := []struct {
+		name          string
+		resource      string
+		setupMock     func(*MockManagedIdentityClient)
+		expectedError string
+	}{
+		{
+			name:     "Success with default resource",
+			resource: RedisResource,
+			setupMock: func(m *MockManagedIdentityClient) {
+				m.On("AcquireToken", mock.Anything, RedisResource, mock.Anything).
+					Return(public.AuthResult{
+						AccessToken: "test-token",
+						ExpiresOn:   time.Now().Add(time.Hour),
+					}, nil)
+			},
+		},
+		{
+			name:     "Success with custom resource",
+			resource: "custom-resource",
+			setupMock: func(m *MockManagedIdentityClient) {
+				m.On("AcquireToken", mock.Anything, "custom-resource", mock.Anything).
+					Return(public.AuthResult{
+						AccessToken: "test-token",
+						ExpiresOn:   time.Now().Add(time.Hour),
+					}, nil)
+			},
+		},
+		{
+			name:     "Error from underlying client",
+			resource: RedisResource,
+			setupMock: func(m *MockManagedIdentityClient) {
+				m.On("AcquireToken", mock.Anything, RedisResource, mock.Anything).
+					Return(public.AuthResult{}, errors.New("underlying client error"))
+			},
+			expectedError: "underlying client error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset the mock for each test
+			mockMIClient.ExpectedCalls = nil
+			mockMIClient.Calls = nil
+
+			// Set up the mock
+			tt.setupMock(mockMIClient)
+
+			// Call AcquireToken with empty options slice to match mock setup
+			result, err := client.AcquireToken(context.Background(), tt.resource, []mi.AcquireTokenOption{}...)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Equal(t, public.AuthResult{}, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEqual(t, public.AuthResult{}, result)
+				assert.Equal(t, "test-token", result.AccessToken)
+			}
+
+			// Verify mock expectations
+			mockMIClient.AssertExpectations(t)
+		})
+	}
+}
