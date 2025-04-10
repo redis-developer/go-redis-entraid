@@ -598,3 +598,112 @@ func TestCredentialsProviderSubscribe(t *testing.T) {
 		}
 	})
 }
+
+func TestCredentialsProviderOptions(t *testing.T) {
+	t.Run("default token manager factory", func(t *testing.T) {
+		options := CredentialsProviderOptions{}
+		factory := options.getTokenManagerFactory()
+		assert.NotNil(t, factory)
+	})
+
+	t.Run("custom token manager factory", func(t *testing.T) {
+		m := &mockTokenManager{}
+		customFactory := func(shared.IdentityProvider, manager.TokenManagerOptions) (manager.TokenManager, error) {
+			return m, nil
+		}
+		options := CredentialsProviderOptions{
+			tokenManagerFactory: customFactory,
+		}
+		tm, err := options.getTokenManagerFactory()(nil, manager.TokenManagerOptions{})
+		assert.NotNil(t, tm)
+		assert.NoError(t, err)
+		assert.Equal(t, m, tm)
+	})
+}
+
+func TestCredentialsProviderErrorScenarios(t *testing.T) {
+	t.Run("token manager start error", func(t *testing.T) {
+		// Create a test provider with invalid options
+		options := ConfidentialCredentialsProviderOptions{
+			CredentialsProviderOptions: CredentialsProviderOptions{
+				ClientID: "test-client-id",
+				TokenManagerOptions: manager.TokenManagerOptions{
+					ExpirationRefreshRatio: 0.7,
+				},
+			},
+			ConfidentialIdentityProviderOptions: identity.ConfidentialIdentityProviderOptions{
+				ClientID:        "test-client-id",
+				CredentialsType: "invalid-type", // Invalid credentials type
+				ClientSecret:    "test-secret",
+				Scopes:          []string{identity.RedisScopeDefault},
+				Authority:       identity.AuthorityConfiguration{},
+			},
+		}
+
+		provider, err := NewConfidentialCredentialsProvider(options)
+		assert.Error(t, err)
+		assert.Nil(t, provider)
+	})
+
+	t.Run("token manager get token error", func(t *testing.T) {
+		// Create a test provider with invalid options
+		options := ConfidentialCredentialsProviderOptions{
+			CredentialsProviderOptions: CredentialsProviderOptions{
+				ClientID: "test-client-id",
+				TokenManagerOptions: manager.TokenManagerOptions{
+					ExpirationRefreshRatio: 0.7,
+				},
+			},
+			ConfidentialIdentityProviderOptions: identity.ConfidentialIdentityProviderOptions{
+				ClientID:        "test-client-id",
+				CredentialsType: identity.ClientSecretCredentialType,
+				ClientSecret:    "", // Empty client secret
+				Scopes:          []string{identity.RedisScopeDefault},
+				Authority:       identity.AuthorityConfiguration{},
+			},
+		}
+
+		provider, err := NewConfidentialCredentialsProvider(options)
+		assert.Error(t, err)
+		assert.Nil(t, provider)
+	})
+
+	t.Run("concurrent error handling", func(t *testing.T) {
+		// Create a test provider with invalid options
+		options := ManagedIdentityCredentialsProviderOptions{
+			CredentialsProviderOptions: CredentialsProviderOptions{
+				ClientID: "test-client-id",
+				TokenManagerOptions: manager.TokenManagerOptions{
+					ExpirationRefreshRatio: 0.7,
+				},
+			},
+			ManagedIdentityProviderOptions: identity.ManagedIdentityProviderOptions{
+				ManagedIdentityType: "invalid-type", // Invalid managed identity type
+				Scopes:              []string{identity.RedisScopeDefault},
+			},
+		}
+
+		provider, err := NewManagedIdentityCredentialsProvider(options)
+		assert.Error(t, err)
+		assert.Nil(t, provider)
+	})
+
+	t.Run("concurrent token updates", func(t *testing.T) {
+		// Create a test provider with invalid options
+		options := DefaultAzureCredentialsProviderOptions{
+			CredentialsProviderOptions: CredentialsProviderOptions{
+				ClientID: "test-client-id",
+				TokenManagerOptions: manager.TokenManagerOptions{
+					ExpirationRefreshRatio: 0.7,
+				},
+			},
+			DefaultAzureIdentityProviderOptions: identity.DefaultAzureIdentityProviderOptions{
+				Scopes: []string{}, // Empty scopes
+			},
+		}
+
+		provider, err := NewDefaultAzureCredentialsProvider(options)
+		assert.Error(t, err)
+		assert.Nil(t, provider)
+	})
+}
