@@ -36,6 +36,28 @@ func TestAuthorityConfiguration(t *testing.T) {
 			expected:      "https://custom-authority.com",
 			expectError:   false,
 		},
+		{
+			name:          "Invalid Authority Type",
+			authorityType: "invalid",
+			expectError:   true,
+		},
+		{
+			name:          "Missing Tenant ID for Multi-Tenant",
+			authorityType: AuthorityTypeMultiTenant,
+			expectError:   true,
+		},
+		{
+			name:          "Missing Authority for Custom",
+			authorityType: AuthorityTypeCustom,
+			expectError:   true,
+		},
+		{
+			name:          "Default Authority Type with Tenant ID",
+			authorityType: AuthorityTypeDefault,
+			tenantID:      "12345",
+			expected:      "https://login.microsoftonline.com/common",
+			expectError:   false,
+		},
 	}
 
 	for _, test := range tests {

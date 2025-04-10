@@ -32,6 +32,10 @@ type ConfidentialIdentityProviderOptions struct {
 
 	// Authority is the authority used to authenticate with the identity provider.
 	Authority AuthorityConfiguration
+
+	// confidentialCredFactory is a factory for creating the confidential credential.
+	// This is used for testing purposes, to allow mocking the credential creation.
+	confidentialCredFactory confidentialCredFactory
 }
 
 // ConfidentialIdentityProvider represents a confidential identity provider.
@@ -46,7 +50,34 @@ type ConfidentialIdentityProvider struct {
 	scopes []string
 
 	// client confidential is the client used to request a manager from the identity provider.
-	client *confidential.Client
+	client confidentialTokenClient
+}
+
+// confidentialCredFacotory is a factory for creating the confidential credential.
+// Introduced for testing purposes. This allows mocking the credential creation, default behavior is to use the confidential.NewCredFromSecret and confidential.NewCredFromCert methods.
+type confidentialCredFactory interface {
+	NewCredFromSecret(clientSecret string) (confidential.Credential, error)
+	NewCredFromCert(clientCert []*x509.Certificate, clientPrivateKey crypto.PrivateKey) (confidential.Credential, error)
+}
+
+// confidentialTokenClient is an interface that defines the methods for a confidential token client.
+// It is used to acquire a token using the client credentials.
+// Introduced for testing purposes. This allows mocking the token client, default behavior is to use the
+// client returned by confidential.New method.
+type confidentialTokenClient interface {
+	// AcquireTokenByCredential acquires a token using the client credentials.
+	// It returns the token and an error if any.
+	AcquireTokenByCredential(ctx context.Context, scopes []string, opts ...confidential.AcquireByCredentialOption) (confidential.AuthResult, error)
+}
+
+type defaultConfidentialCredFactory struct{}
+
+func (d *defaultConfidentialCredFactory) NewCredFromSecret(clientSecret string) (confidential.Credential, error) {
+	return confidential.NewCredFromSecret(clientSecret)
+}
+
+func (d *defaultConfidentialCredFactory) NewCredFromCert(clientCert []*x509.Certificate, clientPrivateKey crypto.PrivateKey) (confidential.Credential, error) {
+	return confidential.NewCredFromCert(clientCert, clientPrivateKey)
 }
 
 // NewConfidentialIdentityProvider creates a new confidential identity provider.
@@ -57,6 +88,7 @@ type ConfidentialIdentityProvider struct {
 // The authority is used to authenticate with the identity provider.
 func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (*ConfidentialIdentityProvider, error) {
 	var credential confidential.Credential
+	var credFactory confidentialCredFactory
 	var authority string
 	var err error
 
@@ -74,6 +106,11 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 		return nil, fmt.Errorf("failed to get authority: %w", err)
 	}
 
+	credFactory = &defaultConfidentialCredFactory{}
+	if opts.confidentialCredFactory != nil {
+		credFactory = opts.confidentialCredFactory
+	}
+
 	switch opts.CredentialsType {
 	case ClientSecretCredentialType:
 		// ClientSecretCredentialType is the type of credentials that uses a client secret to authenticate.
@@ -81,7 +118,7 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 			return nil, fmt.Errorf("client secret is required when using client secret credentials")
 		}
 
-		credential, err = confidential.NewCredFromSecret(opts.ClientSecret)
+		credential, err = credFactory.NewCredFromSecret(opts.ClientSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create client secret credential: %w", err)
 		}
@@ -93,7 +130,7 @@ func NewConfidentialIdentityProvider(opts ConfidentialIdentityProviderOptions) (
 		if opts.ClientPrivateKey == nil {
 			return nil, fmt.Errorf("client private key is required when using client certificate credentials")
 		}
-		credential, err = confidential.NewCredFromCert(opts.ClientCert, opts.ClientPrivateKey)
+		credential, err = credFactory.NewCredFromCert(opts.ClientCert, opts.ClientPrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create client certificate credential: %w", err)
 		}
@@ -125,7 +162,7 @@ func (c *ConfidentialIdentityProvider) RequestToken() (shared.IdentityProviderRe
 
 	result, err := c.client.AcquireTokenByCredential(context.TODO(), c.scopes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire manager: %w", err)
+		return nil, fmt.Errorf("failed to acquire token: %w", err)
 	}
 
 	return shared.NewIDPResponse(shared.ResponseTypeAuthResult, &result)
