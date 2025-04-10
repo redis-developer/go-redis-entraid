@@ -8,6 +8,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	assert.Equal(t, "username", token.username)
 	assert.Equal(t, "password", token.password)
@@ -16,6 +17,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestBasicAuth(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	username, password := token.BasicAuth()
 	assert.Equal(t, "username", username)
@@ -23,18 +25,21 @@ func TestBasicAuth(t *testing.T) {
 }
 
 func TestRawCredentials(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	rawCredentials := token.RawCredentials()
 	assert.Equal(t, "rawToken", rawCredentials)
 }
 
 func TestExpirationOn(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now().Add(1*time.Hour), time.Now(), 3600)
 	expirationOn := token.ExpirationOn()
 	assert.True(t, expirationOn.After(time.Now()))
 }
 
 func TestTokenExpiration(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now().Add(1*time.Hour), time.Now(), 3600)
 	assert.True(t, token.ExpirationOn().After(time.Now()))
 
@@ -43,12 +48,14 @@ func TestTokenExpiration(t *testing.T) {
 }
 
 func TestTokenReceivedAt(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now().Add(1*time.Hour), 3600)
 	assert.True(t, token.receivedAt.After(time.Now().Add(-1*time.Hour)))
 	assert.True(t, token.receivedAt.Before(time.Now().Add(1*time.Hour)))
 }
 
 func TestTokenTTL(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	assert.Equal(t, int64(3600), token.ttl)
 
@@ -57,6 +64,7 @@ func TestTokenTTL(t *testing.T) {
 }
 
 func TestCopyToken(t *testing.T) {
+	t.Parallel()
 	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	copiedToken := copyToken(token)
 
@@ -83,6 +91,7 @@ func TestCopyToken(t *testing.T) {
 }
 
 func TestTokenCompare(t *testing.T) {
+	t.Parallel()
 	// Create two tokens with the same credentials
 	token1 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
 	token2 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)

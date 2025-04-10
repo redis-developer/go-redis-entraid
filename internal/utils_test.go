@@ -1,0 +1,33 @@
+package internal
+
+import "testing"
+
+func TestIsClosedWithNilChannel(t *testing.T) {
+	t.Parallel()
+	var ch chan struct{}
+	if IsClosed(ch) {
+		t.Error("expected nil channel to be open")
+	}
+}
+
+func TestIsClosedWithEmptyChannel(t *testing.T) {
+	t.Parallel()
+	ch := make(chan struct{})
+	if IsClosed(ch) {
+		t.Error("expected empty channel to be open")
+	}
+
+	close(ch)
+	if !IsClosed(ch) {
+		t.Error("expected empty channel to be closed")
+	}
+}
+
+func TestIsClosedWithClosedChannel(t *testing.T) {
+	t.Parallel()
+	ch := make(chan struct{})
+	close(ch)
+	if !IsClosed(ch) {
+		t.Error("expected closed channel to be closed")
+	}
+}

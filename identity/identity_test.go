@@ -9,11 +9,22 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
-	"github.com/redis-developer/go-redis-entraid/internal/mocks"
 	"github.com/stretchr/testify/mock"
 )
 
-var testJWTToken = mocks.TestJWTToken
+// testJWTToken is a JWT manager for testing
+//
+//	{
+//	 "iss": "test jwt",
+//	 "iat": 1743515011,
+//	 "exp": 1775051011,
+//	 "aud": "www.example.com",
+//	 "sub": "test@test.com",
+//	 "oid": "test"
+//	}
+//
+// key: qwertyuiopasdfghjklzxcvbnm123456
+const testJWTToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ0ZXN0IGp3dCIsImlhdCI6MTc0MzUxNTAxMSwiZXhwIjoxNzc1MDUxMDExLCJhdWQiOiJ3d3cuZXhhbXBsZS5jb20iLCJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwib2lkIjoidGVzdCJ9.6RG721V2eFlSLsCRmo53kSRRrTZIe1UPdLZCUEvIarU"
 
 type mockAzureCredential struct {
 	mock.Mock
