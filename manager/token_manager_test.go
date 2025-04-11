@@ -426,9 +426,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	parser := &defaultIdentityProviderResponseParser{}
 	t.Run("Default IdentityProviderResponseParser with type AuthResult", func(t *testing.T) {
 		t.Parallel()
-		authResult := &public.AuthResult{
-			ExpiresOn: time.Now().Add(time.Hour).UTC(),
-		}
+		authResult := testAuthResult(time.Now().Add(time.Hour).UTC())
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
@@ -530,9 +528,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	})
 	t.Run("Default IdentityProviderResponseParser with expired token", func(t *testing.T) {
 		t.Parallel()
-		authResult := &public.AuthResult{
-			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
-		}
+		authResult := testAuthResult(time.Now().Add(-time.Hour))
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
@@ -542,9 +538,7 @@ func TestDefaultIdentityProviderResponseParser(t *testing.T) {
 	})
 	t.Run("Default IdentityProviderResponseParser with token that expired", func(t *testing.T) {
 		t.Parallel()
-		authResult := &public.AuthResult{
-			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
-		}
+		authResult := testAuthResult(time.Now().Add(-time.Hour))
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
@@ -626,9 +620,7 @@ func TestEntraidTokenManager_GetToken(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		authResult := &public.AuthResult{
-			ExpiresOn: time.Now().Add(-time.Hour).UTC(),
-		}
+		authResult := testAuthResult(time.Now().Add(-time.Hour))
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
@@ -730,9 +722,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 
 		// get token that expires before the lower bound
 		assert.NotPanics(t, func() {
-			expiresSoon := &public.AuthResult{
-				ExpiresOn: time.Now().Add(tm.lowerBoundDuration - time.Minute).UTC(),
-			}
+			expiresSoon := testAuthResult(time.Now().Add(tm.lowerBoundDuration - time.Minute).UTC())
 			idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 				expiresSoon)
 			assert.NoError(t, err)
@@ -750,9 +740,7 @@ func TestEntraidTokenManager_durationToRenewal(t *testing.T) {
 		// get token that expires after the lower bound and expirationRefreshRatio to 1
 		assert.NotPanics(t, func() {
 			tm.expirationRefreshRatio = 1
-			expiresAfterlb := &public.AuthResult{
-				ExpiresOn: time.Now().Add(tm.lowerBoundDuration + time.Hour).UTC(),
-			}
+			expiresAfterlb := testAuthResult(time.Now().Add(tm.lowerBoundDuration + time.Hour).UTC())
 			idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 				expiresAfterlb)
 			assert.NoError(t, err)
@@ -790,9 +778,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		authResult := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		authResult := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			authResult)
 		assert.NoError(t, err)
@@ -851,9 +837,8 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
@@ -862,9 +847,7 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		var start, stop time.Time
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 			if atomic.LoadInt32(&twice) == 1 {
@@ -920,17 +903,13 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -976,17 +955,14 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 		idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -1025,18 +1001,14 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
 		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -1083,18 +1055,14 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
 		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -1153,18 +1121,16 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		res := testAuthResult(expiresOn)
+		res.IDToken.Oid = "test"
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
 		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
+			res.IDToken.Oid = "test"
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -1239,18 +1205,14 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 
 		expiresIn := time.Second
 		expiresOn := time.Now().Add(expiresIn).UTC()
-		res := &public.AuthResult{
-			ExpiresOn: expiresOn,
-		}
+		res := testAuthResult(expiresOn)
 		idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult,
 			res)
 		assert.NoError(t, err)
 
 		noErrCall := idp.On("RequestToken").Run(func(args mock.Arguments) {
 			expiresOn := time.Now().Add(expiresIn).UTC()
-			res := &public.AuthResult{
-				ExpiresOn: expiresOn,
-			}
+			res := testAuthResult(expiresOn)
 			response := idpResponse.(*authResult)
 			response.AuthResultVal = res
 		}).Return(idpResponse, nil)
@@ -1294,4 +1256,12 @@ func TestEntraidTokenManager_Streaming(t *testing.T) {
 		listener.AssertNumberOfCalls(t, "OnTokenError", 0)
 		mock.AssertExpectationsForObjects(t, idp, listener)
 	})
+}
+
+func testAuthResult(expiersOn time.Time) *public.AuthResult {
+	r := &public.AuthResult{
+		ExpiresOn: expiersOn,
+	}
+	r.IDToken.Oid = "test"
+	return r
 }

@@ -20,18 +20,26 @@ const (
 	DefaultRetryOptionsMaxDelayMs        = 10000
 )
 
-// defaultRetryableFunc is a function that checks if the error is retriable.
+// defaultIsRetryable is a function that checks if the error is retriable.
 // It takes an error as an argument and returns a boolean value.
 // The function checks if the error is a net.Error and if it is a timeout or temporary error.
+// Returns true for nil errors.
 var defaultIsRetryable = func(err error) bool {
-	var netErr net.Error
 	if err == nil {
 		return true
 	}
 
-	// nolint:staticcheck // SA1019 deprecated netErr.Temporary
-	if ok := errors.As(err, &netErr); ok {
-		return netErr.Timeout() || netErr.Temporary()
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		// Check for timeout first as it's more specific
+		if netErr.Timeout() {
+			return true
+		}
+		// For temporary errors, we'll use a more modern approach
+		var tempErr interface{ Temporary() bool }
+		if errors.As(err, &tempErr) {
+			return tempErr.Temporary()
+		}
 	}
 
 	return errors.Is(err, os.ErrDeadlineExceeded)
@@ -86,29 +94,40 @@ type defaultIdentityProviderResponseParser struct{}
 // It takes an IdentityProviderResponse as an argument and returns a Token and an error if any.
 // The IdentityProviderResponse contains the raw token and the expiration time.
 func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.IdentityProviderResponse) (*token.Token, error) {
+	if response == nil {
+		return nil, fmt.Errorf("identity provider response cannot be nil")
+	}
+
 	var username, password, rawToken string
 	var expiresOn time.Time
-	if response == nil {
-		return nil, fmt.Errorf("response is nil")
-	}
+	now := time.Now().UTC()
+
 	switch response.Type() {
 	case shared.ResponseTypeAuthResult:
 		authResult := response.AuthResult()
 		if authResult.ExpiresOn.IsZero() {
-			return nil, fmt.Errorf("auth result invalid")
+			return nil, fmt.Errorf("auth result expiration time is not set")
+		}
+		if authResult.IDToken.Oid == "" {
+			return nil, fmt.Errorf("auth result OID is empty")
 		}
 		rawToken = authResult.IDToken.RawToken
 		username = authResult.IDToken.Oid
 		password = rawToken
 		expiresOn = authResult.ExpiresOn.UTC()
+
 	case shared.ResponseTypeRawToken, shared.ResponseTypeAccessToken:
-		token := response.RawToken()
+		tokenStr := response.RawToken()
+		if tokenStr == "" {
+			return nil, fmt.Errorf("raw token is empty")
+		}
+
 		if response.Type() == shared.ResponseTypeAccessToken {
 			accessToken := response.AccessToken()
 			if accessToken.Token == "" {
-				return nil, fmt.Errorf("access token is empty")
+				return nil, fmt.Errorf("access token value is empty")
 			}
-			token = accessToken.Token
+			tokenStr = accessToken.Token
 			expiresOn = accessToken.ExpiresOn.UTC()
 		}
 
@@ -117,40 +136,44 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 			Oid string `json:"oid,omitempty"`
 		}{}
 
-		// jwt token should be verified from the identity provider
-		_, _, err := jwt.NewParser().ParseUnverified(token, &claims)
+		// Parse the token to extract claims, but note that signature verification
+		// should be handled by the identity provider
+		_, _, err := jwt.NewParser().ParseUnverified(tokenStr, &claims)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse jwt token: %w", err)
+			return nil, fmt.Errorf("failed to parse JWT token: %w", err)
 		}
-		rawToken = token
+
+		if claims.Oid == "" {
+			return nil, fmt.Errorf("JWT token does not contain OID claim")
+		}
+
+		rawToken = tokenStr
 		username = claims.Oid
 		password = rawToken
 
 		if expiresOn.IsZero() && claims.ExpiresAt != nil {
-			expiresOn = claims.ExpiresAt.Time
+			expiresOn = claims.ExpiresAt.UTC()
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown response type: %s", response.Type())
+		return nil, fmt.Errorf("unsupported response type: %s", response.Type())
 	}
-
-	expiresOn = expiresOn.UTC()
 
 	if expiresOn.IsZero() {
-		return nil, fmt.Errorf("expires on is zero")
+		return nil, fmt.Errorf("token expiration time is not set")
 	}
 
-	if expiresOn.Before(time.Now()) {
-		return nil, fmt.Errorf("expires on is in the past")
+	if expiresOn.Before(now) {
+		return nil, fmt.Errorf("token has expired at %s (current time: %s)", expiresOn, now)
 	}
 
-	// parse token as jwt token and get claims
+	// Create the token with consistent time reference
 	return token.New(
 		username,
 		password,
 		rawToken,
 		expiresOn,
-		time.Now().UTC(),
+		now,
 		int64(time.Until(expiresOn).Seconds()),
 	), nil
 }

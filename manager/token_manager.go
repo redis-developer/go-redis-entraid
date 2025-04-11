@@ -334,6 +334,7 @@ func (e *entraidTokenManager) durationToRenewal() time.Duration {
 		e.tokenRWLock.RUnlock()
 		return 0
 	}
+
 	timeTillExpiration := time.Until(e.token.ExpirationOn())
 	e.tokenRWLock.RUnlock()
 

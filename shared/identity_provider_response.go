@@ -63,6 +63,7 @@ func NewIDPResponse(responseType string, result interface{}) (IdentityProviderRe
 			return nil, fmt.Errorf("expected AccessToken, got %T", result)
 		} else {
 			r.AccessTokenVal = typed
+			r.RawTokenVal = typed.Token
 		}
 	case ResponseTypeRawToken:
 		if typed, ok := result.(string); !ok {
