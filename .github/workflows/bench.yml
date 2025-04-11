@@ -8,6 +8,12 @@ on:
         branches:
             - master
             - main
+permissions:
+    # deployments permission to deploy GitHub pages website
+    deployments: write
+    # contents permission to update benchmark contents in gh-pages branch
+    contents: write
+
 jobs:
   benchmark:
     name: Performance regression check
