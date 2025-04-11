@@ -20,12 +20,6 @@ type CredentialsProviderOptions struct {
 	// This is used to configure the token manager when requesting a token.
 	TokenManagerOptions manager.TokenManagerOptions
 
-	// OnReAuthenticationError is a callback function that is called when a re-authentication error occurs.
-	OnReAuthenticationError func(error) error
-
-	// OnRetryableError is a callback function that is called when a retriable error occurs.
-	OnRetryableError func(error) error
-
 	// tokenManagerFactory is a private field that can be injected from within the package.
 	// It is used to create a token manager for the credentials provider.
 	tokenManagerFactory func(shared.IdentityProvider, manager.TokenManagerOptions) (manager.TokenManager, error)

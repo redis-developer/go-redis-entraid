@@ -305,9 +305,6 @@ func TestCredentialsProviderErrorHandling(t *testing.T) {
 				TokenManagerOptions: manager.TokenManagerOptions{
 					ExpirationRefreshRatio: 0.7,
 				},
-				OnReAuthenticationError: func(err error) error {
-					return errors.New("custom re-auth error")
-				},
 			},
 			ConfidentialIdentityProviderOptions: identity.ConfidentialIdentityProviderOptions{
 				ClientID:        "test-client-id",
@@ -346,9 +343,6 @@ func TestCredentialsProviderErrorHandling(t *testing.T) {
 				ClientID: "test-client-id",
 				TokenManagerOptions: manager.TokenManagerOptions{
 					ExpirationRefreshRatio: 0.7,
-				},
-				OnRetryableError: func(err error) error {
-					return errors.New("custom retry error")
 				},
 			},
 			ConfidentialIdentityProviderOptions: identity.ConfidentialIdentityProviderOptions{

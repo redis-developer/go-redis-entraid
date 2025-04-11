@@ -218,12 +218,6 @@ type CredentialsProviderOptions struct {
 
     // Optional: Token manager configuration
     TokenManagerOptions manager.TokenManagerOptions
-
-    // Optional: Callback for re-authentication errors
-    OnReAuthenticationError func(error) error
-
-    // Optional: Callback for retryable errors
-    OnRetryableError func(error) error
 }
 ```
 
@@ -296,7 +290,7 @@ type ConfidentialIdentityProviderOptions struct {
     ClientID string
 
     // Required: Type of credentials
-    CredentialsType string // "ClientSecret" or "ClientCertificate"
+    CredentialsType string // identity.ClientSecretCredentialType or identity.ClientCertificateCredentialType
 
     // Required for ClientSecret: Client secret value
     ClientSecret string
@@ -358,10 +352,6 @@ options := entraid.CredentialsProviderOptions{
         ExpirationRefreshRatio: 0.7,
         LowerRefreshBoundMs: 10000,
     },
-    OnReAuthenticationError: func(err error) error {
-        log.Printf("Re-authentication error: %v", err)
-        return err
-    },
 }
 ```
 
@@ -382,14 +372,6 @@ options := entraid.CredentialsProviderOptions{
                     strings.Contains(err.Error(), "timeout")
             },
         },
-    },
-    OnReAuthenticationError: func(err error) error {
-        log.Printf("Re-authentication error: %v", err)
-        return err
-    },
-    OnRetryableError: func(err error) error {
-        log.Printf("Retryable error: %v", err)
-        return err
     },
 }
 ```
@@ -658,7 +640,7 @@ A:
 - Default Azure: Uses environment-based authentication, good for development
 
 ### Q: How do I handle connection failures?
-A: The library includes built-in retry mechanisms. You can configure retry behavior using `RetryOptions`:
+A: The library includes built-in retry mechanisms in the TokenManager. You can configure retry behavior using `RetryOptions`:
 ```go
 RetryOptions: manager.RetryOptions{
     MaxAttempts: 3,
@@ -698,34 +680,4 @@ func (p *CustomProvider) GetToken(ctx context.Context) (string, error) {
 ```
 
 ### Q: What happens if token refresh fails?
-A: The library will retry according to the configured `RetryOptions`. If all retries fail, it will call the `OnReAuthenticationError` callback if provided. You can implement custom error handling:
-```go
-OnReAuthenticationError: func(err error) error {
-    log.Printf("Re-authentication error: %v", err)
-    // Implement your error handling logic
-    return err
-}
-```
-
-### Q: How do I handle different environments (dev/staging/prod)?
-A: Use environment variables and configuration options:
-```go
-// Development
-options := entraid.CredentialsProviderOptions{
-    ClientID: os.Getenv("DEV_AZURE_CLIENT_ID"),
-    TokenManagerOptions: manager.TokenManagerOptions{
-        ExpirationRefreshRatio: 0.8, // More aggressive refresh
-    },
-}
-
-// Production
-options := entraid.CredentialsProviderOptions{
-    ClientID: os.Getenv("PROD_AZURE_CLIENT_ID"),
-    TokenManagerOptions: manager.TokenManagerOptions{
-        ExpirationRefreshRatio: 0.7,
-        RetryOptions: manager.RetryOptions{
-            MaxAttempts: 5,
-        },
-    },
-}
-```
+A: The library will retry according to the configured `RetryOptions`. If all retries fail, the error will be propagated to the client.

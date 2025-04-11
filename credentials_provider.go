@@ -36,12 +36,13 @@ func (e *entraidCredentialsProvider) onTokenNext(t *token.Token) {
 	}
 }
 
-// onError is a method that is called when the token manager encounters an error.
+// onTokenError is a method that is called when the token manager encounters an error.
 // It notifies all listeners with the error.
 func (e *entraidCredentialsProvider) onTokenError(err error) {
 	e.rwLock.RLock()
 	defer e.rwLock.RUnlock()
-	// Notify all listeners with the error.
+
+	// Notify all listeners with the error
 	for _, listener := range e.listeners {
 		listener.OnError(err)
 	}
