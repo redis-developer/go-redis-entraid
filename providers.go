@@ -78,7 +78,7 @@ func NewManagedIdentityCredentialsProvider(options ManagedIdentityCredentialsPro
 		return nil, fmt.Errorf("cannot create token manager: %w", err)
 	}
 	// Create a new credentials provider using the token manager.
-	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	credentialsProvider, err := NewCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
 	}
@@ -115,7 +115,7 @@ func NewConfidentialCredentialsProvider(options ConfidentialCredentialsProviderO
 	}
 
 	// Create a new credentials provider using the token manager.
-	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	credentialsProvider, err := NewCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
 	}
@@ -147,7 +147,7 @@ func NewDefaultAzureCredentialsProvider(options DefaultAzureCredentialsProviderO
 	}
 
 	// Create a new credentials provider using the token manager.
-	credentialsProvider, err := newCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
+	credentialsProvider, err := NewCredentialsProvider(tokenManager, options.CredentialsProviderOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create credentials provider: %w", err)
 	}
