@@ -5,7 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/redis-developer/go-redis-entraid/internal"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"github.com/redis-developer/go-redis-entraid/shared"
 	"github.com/redis-developer/go-redis-entraid/token"
 	"github.com/stretchr/testify/mock"
@@ -145,4 +146,35 @@ func (m *mockTokenListener) OnTokenError(err error) {
 	_ = m.Called(err)
 }
 
-type authResult = internal.IDPResp
+type authResult struct {
+	// ResultType is the type of the auth result
+	ResultType string
+	// AuthResultVal is the auth result value
+	AuthResultVal *public.AuthResult
+	// AccessTokenVal is the access token value
+	AccessTokenVal *azcore.AccessToken
+	// RawTokenVal is the raw token value
+	RawTokenVal string
+}
+
+func (a *authResult) Type() string {
+	return a.ResultType
+}
+
+func (a *authResult) AuthResult() public.AuthResult {
+	if a.AuthResultVal == nil {
+		return public.AuthResult{}
+	}
+	return *a.AuthResultVal
+}
+
+func (a *authResult) AccessToken() azcore.AccessToken {
+	if a.AccessTokenVal == nil {
+		return azcore.AccessToken{}
+	}
+	return *a.AccessTokenVal
+}
+
+func (a *authResult) RawToken() string {
+	return a.RawTokenVal
+}

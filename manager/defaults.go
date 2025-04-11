@@ -118,9 +118,6 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 
 	case shared.ResponseTypeRawToken, shared.ResponseTypeAccessToken:
 		tokenStr := response.RawToken()
-		if tokenStr == "" {
-			return nil, fmt.Errorf("raw token is empty")
-		}
 
 		if response.Type() == shared.ResponseTypeAccessToken {
 			accessToken := response.AccessToken()
@@ -129,6 +126,10 @@ func (*defaultIdentityProviderResponseParser) ParseResponse(response shared.Iden
 			}
 			tokenStr = accessToken.Token
 			expiresOn = accessToken.ExpiresOn.UTC()
+		}
+
+		if tokenStr == "" {
+			return nil, fmt.Errorf("raw token is empty")
 		}
 
 		claims := struct {

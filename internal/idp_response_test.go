@@ -6,6 +6,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIDPResp_Type(t *testing.T) {
@@ -29,7 +30,7 @@ func TestIDPResp_Type(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := &IDPResp{
-				ResultType: tt.resultType,
+				resultType: tt.resultType,
 			}
 			if got := resp.Type(); got != tt.want {
 				t.Errorf("IDPResp.Type() = %v, want %v", got, tt.want)
@@ -68,7 +69,7 @@ func TestIDPResp_AuthResult(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := &IDPResp{
-				AuthResultVal: tt.authResult,
+				authResultVal: tt.authResult,
 			}
 			got := resp.AuthResult()
 			if got.AccessToken != tt.wantToken {
@@ -111,7 +112,7 @@ func TestIDPResp_AccessToken(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := &IDPResp{
-				AccessTokenVal: tt.accessToken,
+				accessTokenVal: tt.accessToken,
 			}
 			got := resp.AccessToken()
 			if got.Token != tt.wantToken {
@@ -145,11 +146,157 @@ func TestIDPResp_RawToken(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := &IDPResp{
-				RawTokenVal: tt.rawToken,
+				rawTokenVal: tt.rawToken,
 			}
 			if got := resp.RawToken(); got != tt.want {
 				t.Errorf("IDPResp.RawToken() = %v, want %v", got, tt.want)
 			}
 		})
 	}
+}
+
+func TestNewIDPResp(t *testing.T) {
+	tests := []struct {
+		name        string
+		resultType  string
+		result      interface{}
+		wantErr     bool
+		checkResult func(t *testing.T, resp *IDPResp)
+	}{
+		{
+			name:       "valid AuthResult pointer",
+			resultType: "AuthResult",
+			result: &public.AuthResult{
+				AccessToken: "test-token",
+			},
+			wantErr: false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasAuthResult())
+				assert.Equal(t, "test-token", resp.AuthResult().AccessToken)
+				assert.False(t, resp.HasAccessToken())
+				assert.False(t, resp.HasRawToken())
+			},
+		},
+		{
+			name:       "valid AuthResult value",
+			resultType: "AuthResult",
+			result: public.AuthResult{
+				AccessToken: "test-token",
+			},
+			wantErr: false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasAuthResult())
+				assert.Equal(t, "test-token", resp.AuthResult().AccessToken)
+			},
+		},
+		{
+			name:       "valid AccessToken pointer",
+			resultType: "AccessToken",
+			result: &azcore.AccessToken{
+				Token:     "test-token",
+				ExpiresOn: time.Now(),
+			},
+			wantErr: false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasAccessToken())
+				assert.Equal(t, "test-token", resp.AccessToken().Token)
+				assert.Equal(t, "test-token", resp.RawToken())
+			},
+		},
+		{
+			name:       "valid AccessToken value",
+			resultType: "AccessToken",
+			result: azcore.AccessToken{
+				Token:     "test-token",
+				ExpiresOn: time.Now(),
+			},
+			wantErr: false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasAccessToken())
+				assert.Equal(t, "test-token", resp.AccessToken().Token)
+				assert.Equal(t, "test-token", resp.RawToken())
+			},
+		},
+		{
+			name:       "valid RawToken string",
+			resultType: "RawToken",
+			result:     "test-token",
+			wantErr:    false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasRawToken())
+				assert.Equal(t, "test-token", resp.RawToken())
+				assert.False(t, resp.HasAuthResult())
+				assert.False(t, resp.HasAccessToken())
+			},
+		},
+		{
+			name:       "valid RawToken string pointer",
+			resultType: "RawToken",
+			result:     stringPtr("test-token"),
+			wantErr:    false,
+			checkResult: func(t *testing.T, resp *IDPResp) {
+				assert.True(t, resp.HasRawToken())
+				assert.Equal(t, "test-token", resp.RawToken())
+			},
+		},
+		{
+			name:       "nil result",
+			resultType: "AuthResult",
+			result:     nil,
+			wantErr:    true,
+		},
+		{
+			name:       "nil RawToken pointer",
+			resultType: "RawToken",
+			result:     (*string)(nil),
+			wantErr:    true,
+		},
+		{
+			name:       "invalid AuthResult type",
+			resultType: "AuthResult",
+			result:     "not-an-auth-result",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid AccessToken type",
+			resultType: "AccessToken",
+			result:     "not-an-access-token",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid RawToken type",
+			resultType: "RawToken",
+			result:     123,
+			wantErr:    true,
+		},
+		{
+			name:       "unsupported result type",
+			resultType: "InvalidType",
+			result:     "test",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewIDPResp(tt.resultType, tt.result)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.NotNil(t, got)
+			assert.Equal(t, tt.resultType, got.Type())
+
+			if tt.checkResult != nil {
+				tt.checkResult(t, got)
+			}
+		})
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
