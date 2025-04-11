@@ -179,12 +179,20 @@ func (e *entraidTokenManager) GetToken(forceRefresh bool) (*token.Token, error) 
 	e.tokenRWLock.RLock()
 	// check if the token is nil and if it is not expired
 	if !forceRefresh && e.token != nil && time.Now().Add(e.lowerBoundDuration).Before(e.token.ExpirationOn()) {
-		t := e.token.Copy()
+		t := e.token
 		e.tokenRWLock.RUnlock()
-		// copy the token so the caller can't modify it
 		return t, nil
 	}
 	e.tokenRWLock.RUnlock()
+
+	// Upgrade to write lock for token update
+	e.tokenRWLock.Lock()
+	defer e.tokenRWLock.Unlock()
+
+	// Double-check pattern to avoid unnecessary token refresh
+	if !forceRefresh && e.token != nil && time.Now().Add(e.lowerBoundDuration).Before(e.token.ExpirationOn()) {
+		return e.token, nil
+	}
 
 	idpResult, err := e.idp.RequestToken()
 	if err != nil {
@@ -199,11 +207,10 @@ func (e *entraidTokenManager) GetToken(forceRefresh bool) (*token.Token, error) 
 	if t == nil {
 		return nil, fmt.Errorf("failed to get token: token is nil")
 	}
-	e.tokenRWLock.Lock()
-	// copy the token so the caller can't modify it
-	e.token = t.Copy()
-	e.tokenRWLock.Unlock()
 
+	// Store the token
+	e.token = t
+	// Return the token - no need to copy since it's immutable
 	return t, nil
 }
 
@@ -211,6 +218,9 @@ func (e *entraidTokenManager) GetToken(forceRefresh bool) (*token.Token, error) 
 // It takes a TokenListener as an argument, which is used to receive updates.
 // The token manager will call the listener's OnTokenNext method with the updated token.
 // If an error occurs, the token manager will call the listener's OnError method with the error.
+//
+// Note: The initial token is delivered synchronously.
+// The TokenListener will receive the token immediately, before the token manager goroutine starts.
 func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -230,7 +240,8 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 		return nil, fmt.Errorf("failed to start token manager: %w", err)
 	}
 
-	go listener.OnTokenNext(t)
+	// Deliver initial token synchronously
+	listener.OnTokenNext(t)
 
 	e.closedChan = make(chan struct{})
 	e.listener = listener
@@ -238,25 +249,23 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 	go func(listener TokenListener, closed <-chan struct{}) {
 		maxDelay := time.Duration(e.retryOptions.MaxDelayMs) * time.Millisecond
 		initialDelay := time.Duration(e.retryOptions.InitialDelayMs) * time.Millisecond
+
 		for {
 			timeToRenewal := e.durationToRenewal()
 			select {
 			case <-closed:
-				// Token manager is closed, stop the loop
-				// TODO(ndyakov): Discuss if we should call OnTokenError here
 				return
 			case <-time.After(timeToRenewal):
 				if timeToRenewal == 0 {
 					// Token was requested immediately, guard against infinite loop
 					select {
 					case <-closed:
-						// Token manager is closed, stop the loop
-						// TODO(ndyakov): Discuss if we should call OnTokenError here
 						return
 					case <-time.After(initialDelay):
 						// continue to attempt
 					}
 				}
+
 				// Token is about to expire, refresh it
 				delay := initialDelay
 				for i := 0; i < e.retryOptions.MaxAttempts; i++ {
@@ -265,28 +274,25 @@ func (e *entraidTokenManager) Start(listener TokenListener) (CancelFunc, error) 
 						listener.OnTokenNext(t)
 						break
 					}
+
 					// check if err is retriable
 					if e.retryOptions.IsRetryable(err) {
-						// retriable error, continue to next attempt
-						// Exponential backoff
 						if i == e.retryOptions.MaxAttempts-1 {
 							// last attempt, call OnTokenError
 							listener.OnTokenError(fmt.Errorf("max attempts reached: %w", err))
 							return
 						}
 
+						// Exponential backoff
 						if delay < maxDelay {
 							delay = time.Duration(float64(delay) * e.retryOptions.BackoffMultiplier)
 						}
-
 						if delay > maxDelay {
 							delay = maxDelay
 						}
 
 						select {
 						case <-closed:
-							// Token manager is closed, stop the loop
-							// TODO(ndyakov): Discuss if we should call OnTokenError here
 							return
 						case <-time.After(delay):
 							// continue to next attempt
