@@ -66,68 +66,109 @@ func (m *mockIDP) RequestToken() (IdentityProviderResponse, error) {
 
 func TestNewIDPResponse(t *testing.T) {
 	tests := []struct {
-		name         string
-		responseType string
-		result       interface{}
-		wantErr      bool
+		name          string
+		responseType  string
+		result        interface{}
+		expectedError string
 	}{
 		{
-			name:         "Valid AuthResult",
+			name:         "Valid AuthResult pointer",
 			responseType: ResponseTypeAuthResult,
 			result:       &public.AuthResult{},
-			wantErr:      false,
 		},
 		{
-			name:         "Valid AccessToken",
+			name:         "Valid AuthResult value",
+			responseType: ResponseTypeAuthResult,
+			result:       public.AuthResult{},
+		},
+		{
+			name:         "Valid AccessToken pointer",
 			responseType: ResponseTypeAccessToken,
-			result:       &azcore.AccessToken{},
-			wantErr:      false,
+			result:       &azcore.AccessToken{Token: "test-token"},
 		},
 		{
-			name:         "Valid RawToken",
+			name:         "Valid AccessToken value",
+			responseType: ResponseTypeAccessToken,
+			result:       azcore.AccessToken{Token: "test-token"},
+		},
+		{
+			name:         "Valid RawToken string",
 			responseType: ResponseTypeRawToken,
 			result:       "test-token",
-			wantErr:      false,
 		},
 		{
-			name:         "Invalid AuthResult type",
-			responseType: ResponseTypeAuthResult,
-			result:       "not-an-auth-result",
-			wantErr:      true,
-		},
-		{
-			name:         "Invalid AccessToken type",
-			responseType: ResponseTypeAccessToken,
-			result:       "not-an-access-token",
-			wantErr:      true,
-		},
-		{
-			name:         "Invalid RawToken type",
+			name:         "Valid RawToken string pointer",
 			responseType: ResponseTypeRawToken,
-			result:       123,
-			wantErr:      true,
+			result:       stringPtr("test-token"),
 		},
 		{
-			name:         "Unknown response type",
-			responseType: "UnknownType",
-			result:       nil,
-			wantErr:      true,
+			name:          "Nil result",
+			responseType:  ResponseTypeAuthResult,
+			result:        nil,
+			expectedError: "result cannot be nil",
+		},
+		{
+			name:          "Nil string pointer",
+			responseType:  ResponseTypeRawToken,
+			result:        (*string)(nil),
+			expectedError: "raw token cannot be nil",
+		},
+		{
+			name:          "Invalid AuthResult type",
+			responseType:  ResponseTypeAuthResult,
+			result:        "not-an-auth-result",
+			expectedError: "invalid auth result type: expected public.AuthResult or *public.AuthResult",
+		},
+		{
+			name:          "Invalid AccessToken type",
+			responseType:  ResponseTypeAccessToken,
+			result:        "not-an-access-token",
+			expectedError: "invalid access token type: expected azcore.AccessToken or *azcore.AccessToken",
+		},
+		{
+			name:          "Invalid RawToken type",
+			responseType:  ResponseTypeRawToken,
+			result:        123,
+			expectedError: "invalid raw token type: expected string or *string",
+		},
+		{
+			name:          "Invalid response type",
+			responseType:  "InvalidType",
+			result:        "test",
+			expectedError: "unsupported identity provider response type: InvalidType",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			response, err := NewIDPResponse(tt.responseType, tt.result)
-			if tt.wantErr {
+			resp, err := NewIDPResponse(tt.responseType, tt.result)
+
+			if tt.expectedError != "" {
 				assert.Error(t, err)
-				assert.Nil(t, response)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, response)
-				assert.Equal(t, tt.responseType, response.Type())
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Nil(t, resp)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.NotNil(t, resp)
+			assert.Equal(t, tt.responseType, resp.Type())
+
+			switch tt.responseType {
+			case ResponseTypeAuthResult:
+				assert.NotNil(t, resp.AuthResult())
+			case ResponseTypeAccessToken:
+				assert.NotNil(t, resp.AccessToken())
+				assert.NotEmpty(t, resp.AccessToken().Token)
+			case ResponseTypeRawToken:
+				assert.NotEmpty(t, resp.RawToken())
 			}
 		})
 	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
 
 func TestIdentityProviderResponse(t *testing.T) {

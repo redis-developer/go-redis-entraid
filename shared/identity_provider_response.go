@@ -49,30 +49,47 @@ type IdentityProvider interface {
 // Type can be either AuthResult, AccessToken, or RawToken.
 // Second argument is the result of the type provided in the first argument.
 func NewIDPResponse(responseType string, result interface{}) (IdentityProviderResponse, error) {
+	if result == nil {
+		return nil, fmt.Errorf("result cannot be nil")
+	}
+
 	r := &internal.IDPResp{ResultType: responseType}
 
 	switch responseType {
 	case ResponseTypeAuthResult:
-		if typed, ok := result.(*public.AuthResult); !ok {
-			return nil, fmt.Errorf("expected AuthResult, got %T", result)
-		} else {
-			r.AuthResultVal = typed
+		switch v := result.(type) {
+		case *public.AuthResult:
+			r.AuthResultVal = v
+		case public.AuthResult:
+			r.AuthResultVal = &v
+		default:
+			return nil, fmt.Errorf("invalid auth result type: expected public.AuthResult or *public.AuthResult, got %T with value %v", result, result)
 		}
 	case ResponseTypeAccessToken:
-		if typed, ok := result.(*azcore.AccessToken); !ok {
-			return nil, fmt.Errorf("expected AccessToken, got %T", result)
-		} else {
-			r.AccessTokenVal = typed
-			r.RawTokenVal = typed.Token
+		switch v := result.(type) {
+		case *azcore.AccessToken:
+			r.AccessTokenVal = v
+			r.RawTokenVal = v.Token
+		case azcore.AccessToken:
+			r.AccessTokenVal = &v
+			r.RawTokenVal = v.Token
+		default:
+			return nil, fmt.Errorf("invalid access token type: expected azcore.AccessToken or *azcore.AccessToken, got %T with value %v", result, result)
 		}
 	case ResponseTypeRawToken:
-		if typed, ok := result.(string); !ok {
-			return nil, fmt.Errorf("expected string, got %T", result)
-		} else {
-			r.RawTokenVal = typed
+		switch v := result.(type) {
+		case string:
+			r.RawTokenVal = v
+		case *string:
+			if v == nil {
+				return nil, fmt.Errorf("raw token cannot be nil")
+			}
+			r.RawTokenVal = *v
+		default:
+			return nil, fmt.Errorf("invalid raw token type: expected string or *string, got %T with value %v", result, result)
 		}
 	default:
-		return nil, fmt.Errorf("unknown idp response type: %s", responseType)
+		return nil, fmt.Errorf("unsupported identity provider response type: %s", responseType)
 	}
 	return r, nil
 }
