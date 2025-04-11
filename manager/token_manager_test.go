@@ -1262,3 +1262,122 @@ func testAuthResult(expiersOn time.Time) *public.AuthResult {
 	r.IDToken.Oid = "test"
 	return r
 }
+
+func BenchmarkTokenManager_GetToken(b *testing.B) {
+	idp := &mockIdentityProvider{}
+	mParser := &mockIdentityProviderResponseParser{}
+	tokenManager, err := NewTokenManager(idp,
+		TokenManagerOptions{
+			IdentityProviderResponseParser: mParser,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	idp.On("RequestToken").Return(rawResponse, nil)
+	mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = tokenManager.GetToken(false)
+	}
+}
+
+func BenchmarkTokenManager_Start(b *testing.B) {
+	idp := &mockIdentityProvider{}
+	listener := &mockTokenListener{}
+	mParser := &mockIdentityProviderResponseParser{}
+	tokenManager, err := NewTokenManager(idp,
+		TokenManagerOptions{
+			IdentityProviderResponseParser: mParser,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	idp.On("RequestToken").Return(rawResponse, nil)
+	mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+	listener.On("OnTokenNext", testTokenValid).Return()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = tokenManager.Start(listener)
+	}
+}
+
+func BenchmarkTokenManager_Close(b *testing.B) {
+	idp := &mockIdentityProvider{}
+	listener := &mockTokenListener{}
+	mParser := &mockIdentityProviderResponseParser{}
+	tokenManager, err := NewTokenManager(idp,
+		TokenManagerOptions{
+			IdentityProviderResponseParser: mParser,
+		},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	rawResponse, err := shared.NewIDPResponse(shared.ResponseTypeRawToken, "test")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	idp.On("RequestToken").Return(rawResponse, nil)
+	mParser.On("ParseResponse", rawResponse).Return(testTokenValid, nil)
+	listener.On("OnTokenNext", testTokenValid).Return()
+
+	_, err = tokenManager.Start(listener)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tokenManager.Close()
+	}
+}
+
+func BenchmarkTokenManager_durationToRenewal(b *testing.B) {
+	idp := &mockIdentityProvider{}
+	tokenManager, err := NewTokenManager(idp, TokenManagerOptions{
+		LowerRefreshBoundMs: 1000 * 60 * 60, // 1 hour
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	tm, ok := tokenManager.(*entraidTokenManager)
+	if !ok {
+		b.Fatal("failed to cast to entraidTokenManager")
+	}
+
+	expiresAfterlb := testAuthResult(time.Now().Add(tm.lowerBoundDuration + time.Hour).UTC())
+	idpResponse, err := shared.NewIDPResponse(shared.ResponseTypeAuthResult, expiresAfterlb)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	idp.On("RequestToken").Return(idpResponse, nil)
+	_, err = tm.GetToken(false)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tm.durationToRenewal()
+	}
+}

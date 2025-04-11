@@ -300,3 +300,65 @@ func TestNewIDPResp(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+func BenchmarkIDPResp_Type(b *testing.B) {
+	resp := &IDPResp{
+		resultType: "AuthResult",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp.Type()
+	}
+}
+
+func BenchmarkIDPResp_AuthResult(b *testing.B) {
+	now := time.Now()
+	authResult := &public.AuthResult{
+		AccessToken: "test-token",
+		ExpiresOn:   now,
+	}
+	resp := &IDPResp{
+		authResultVal: authResult,
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp.AuthResult()
+	}
+}
+
+func BenchmarkIDPResp_AccessToken(b *testing.B) {
+	now := time.Now()
+	accessToken := &azcore.AccessToken{
+		Token:     "test-token",
+		ExpiresOn: now,
+	}
+	resp := &IDPResp{
+		accessTokenVal: accessToken,
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp.AccessToken()
+	}
+}
+
+func BenchmarkIDPResp_RawToken(b *testing.B) {
+	resp := &IDPResp{
+		rawTokenVal: "test-raw-token",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp.RawToken()
+	}
+}
+
+func BenchmarkNewIDPResp(b *testing.B) {
+	now := time.Now()
+	authResult := &public.AuthResult{
+		AccessToken: "test-token",
+		ExpiresOn:   now,
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = NewIDPResp("AuthResult", authResult)
+	}
+}

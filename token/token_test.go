@@ -111,3 +111,70 @@ func TestTokenCompare(t *testing.T) {
 	assert.False(t, token1.compareToken(token4))
 	assert.True(t, token1.compareCredentials(token4))
 }
+
+func BenchmarkNew(b *testing.B) {
+	now := time.Now()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		New("username", "password", "rawToken", now, now, 3600)
+	}
+}
+
+func BenchmarkBasicAuth(b *testing.B) {
+	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token.BasicAuth()
+	}
+}
+
+func BenchmarkRawCredentials(b *testing.B) {
+	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token.RawCredentials()
+	}
+}
+
+func BenchmarkExpirationOn(b *testing.B) {
+	token := New("username", "password", "rawToken", time.Now().Add(1*time.Hour), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token.ExpirationOn()
+	}
+}
+
+func BenchmarkCopyToken(b *testing.B) {
+	token := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token.Copy()
+	}
+}
+
+func BenchmarkCompareCredentials(b *testing.B) {
+	token1 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	token2 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token1.compareCredentials(token2)
+	}
+}
+
+func BenchmarkCompareRawCredentials(b *testing.B) {
+	token1 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	token2 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token1.compareRawCredentials(token2)
+	}
+}
+
+func BenchmarkCompareToken(b *testing.B) {
+	token1 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	token2 := New("username", "password", "rawToken", time.Now(), time.Now(), 3600)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		token1.compareToken(token2)
+	}
+}
