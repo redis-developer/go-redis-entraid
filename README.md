@@ -669,13 +669,23 @@ client := redis.NewClusterClient(&redis.ClusterOptions{
 ### Q: How do I implement custom authentication?
 A: You can create a custom identity provider by implementing the `IdentityProvider` interface:
 ```go
-type CustomProvider struct {
-    // Your implementation
+// IdentityProviderResponse is an interface that defines the methods for an identity provider authentication result.
+// It is used to get the type of the authentication result, the authentication result itself (can be AuthResult or AccessToken),
+type IdentityProviderResponse interface {
+	// Type returns the type of the auth result
+	Type() string
+	AuthResult() public.AuthResult
+	AccessToken() azcore.AccessToken
+	RawToken() string
 }
 
-func (p *CustomProvider) GetToken(ctx context.Context) (string, error) {
-    // Your token retrieval logic
-    return "your-token", nil
+// IdentityProvider is an interface that defines the methods for an identity provider.
+// It is used to request a token for authentication.
+// The identity provider is responsible for providing the raw authentication token.
+type IdentityProvider interface {
+	// RequestToken requests a token from the identity provider.
+	// It returns the token, the expiration time, and an error if any.
+	RequestToken() (IdentityProviderResponse, error)
 }
 ```
 

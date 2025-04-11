@@ -48,8 +48,7 @@ We maintain high test coverage for the project. When contributing:
 
 1. Ensure your code passes all tests
 2. Update the README.md if necessary
-3. Update the version number in `version.go` if making a significant change
-4. Submit your pull request with a clear description of the changes
+3. Submit your pull request with a clear description of the changes
 
 ## Reporting Issues
 
@@ -61,10 +60,6 @@ If you find a bug or have a feature request:
    - Steps to reproduce (for bugs)
    - Expected and actual behavior
    - Environment details (Go version, OS, etc.)
-
-## Code of Conduct
-
-Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms.
 
 ## Development Workflow
 
